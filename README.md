@@ -6,6 +6,10 @@ If you just want to use `manage_packages.py`, then install the required packages
 If you want to run the whole toolkit, then install the required packages using
 `python -m pip install -r requirements.txt`
 
+You will need Git installed to install the requirements for the full toolkit.
+This is due to the code that automatically turns Japanese titles into romaji during package creation.
+You may also need to install `six` and `semidbm` manually through pip.
+
 # Tools
 
 ## eamxml.py
