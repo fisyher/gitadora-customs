@@ -196,7 +196,7 @@ class Fraction2:
 
 def get_value_from_dtx(target_tag, lines, default=None):
     for line in lines:
-        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):\s*(?P<value>.*)", line)
+        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
 
         if not matches:
             continue
@@ -214,7 +214,7 @@ def get_bpms_from_dtx(lines):
     bpms = {}
 
     for line in lines:
-        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):\s*(?P<value>.*)", line)
+        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
 
         if not matches:
             continue
@@ -248,7 +248,7 @@ def get_wavs_from_dtx(lines, target_parts, sound_metadata, get_wav_length=True):
         if ';' in line:
             line = line[:line.index(';')].strip()
 
-        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):\s*(?P<value>.*)", line)
+        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
 
         if not matches:
             continue
@@ -287,7 +287,7 @@ def get_wav_volumes_from_dtx(lines):
     wav_volumes = {}
 
     for line in lines:
-        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):\s*(?P<value>.*)", line)
+        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
 
         if not matches:
             continue
@@ -327,7 +327,7 @@ def get_wav_pans_from_dtx(lines):
     wav_pans = {}
 
     for line in lines:
-        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):\s*(?P<value>.*)", line)
+        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
 
         if not matches:
             continue
@@ -368,7 +368,7 @@ def get_bonus_notes_from_dtx(lines, start_offset_padding):
     bonus_notes = {}
 
     for line in lines:
-        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):\s*(?P<value>.*)", line)
+        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
 
         if not matches:
             continue
@@ -405,7 +405,7 @@ def get_measure_lengths_from_dtx(lines, start_offset_padding):
     measure_lengths = {}
 
     for line in lines:
-        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):\s*(?P<value>.*)", line)
+        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
 
         if not matches:
             continue
@@ -463,7 +463,7 @@ def get_events_by_measure_from_dtx(lines, start_offset_padding):
     events_by_measure = {}
 
     for line in lines:
-        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):\s*(?P<value>.*)", line)
+        matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
 
         if not matches:
             continue
@@ -2215,10 +2215,10 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
 
     output = []
     if 'title' in orig_chart_data['header']:
-        output.append("#TITLE: %s" % orig_chart_data['header']['title'])
+        output.append("#TITLE %s" % orig_chart_data['header']['title'])
 
     if 'artist' in orig_chart_data['header']:
-        output.append("#ARTIST: %s" % orig_chart_data['header']['artist'])
+        output.append("#ARTIST %s" % orig_chart_data['header']['artist'])
 
     if 'level' in orig_chart_data['header']:
         for k in orig_chart_data['header']['level']:
@@ -2228,7 +2228,7 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
                 "open": "GLEVEL",
                 "bass": "BLEVEL"
             }
-            output.append("#%s: %s" % (level_map[k], orig_chart_data['header']['level'][k]))
+            output.append("#%s %s" % (level_map[k], orig_chart_data['header']['level'][k]))
 
     if 'level' in orig_chart_data['header']:
         has_drum = "drum" in orig_chart_data['header']['level']
@@ -2236,16 +2236,16 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
         has_bass = "bass" in orig_chart_data['header']['level']
         has_open = "open" in orig_chart_data['header']['level']
         if has_drum:
-            output.append("#PREVIEW: i%04ddm.wav" % orig_chart_data['header']['musicid'])
+            output.append("#PREVIEW i%04ddm.wav" % orig_chart_data['header']['musicid'])
         elif has_guitar or has_bass or has_open:
-            output.append("#PREVIEW: i%04dgf.wav" % orig_chart_data['header']['musicid'])
+            output.append("#PREVIEW i%04dgf.wav" % orig_chart_data['header']['musicid'])
 
-    output.append("#PREIMAGE: img_jk%04d.png" % orig_chart_data['header']['musicid'])
-    output.append("#AVIZZ: mv%04d.avi" % orig_chart_data['header']['musicid'])
+    output.append("#PREIMAGE img_jk%04d.png" % orig_chart_data['header']['musicid'])
+    output.append("#AVIZZ mv%04d.avi" % orig_chart_data['header']['musicid'])
 
-    output.append("#BPM: %s" % (bpms[0]))
+    output.append("#BPM %s" % (bpms[0]))
     for i in range(0, len(bpms)):
-        output.append("#BPM%s: %s" % (base_repr(i+1, 36, padding=2).upper()[-2:], bpms[i]))
+        output.append("#BPM%s %s" % (base_repr(i+1, 36, padding=2).upper()[-2:], bpms[i]))
 
     for k in sorted(sound_files.keys()):
         wav_filename = "%04x.wav" % sound_files[k]
@@ -2259,7 +2259,7 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
                     wav_filename = "%s.wav" % sound_entry['filename']
                     break
 
-        output.append("#WAV%s: %s" % (base_repr(int(k), 36, padding=2).upper()[-2:], wav_filename))
+        output.append("#WAV%s %s" % (base_repr(int(k), 36, padding=2).upper()[-2:], wav_filename))
 
     bgm_filename = "bgm.wav"
     if 'level' in orig_chart_data['header']:
@@ -2282,13 +2282,13 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
         bgm_filename = "bgm%04d%s.wav" % (orig_chart_data['header']['musicid'],
                                           bgm_filename_part)
 
-    output.append("#WAVZZ: %s" % bgm_filename)
+    output.append("#WAVZZ %s" % bgm_filename)
 
     for k in sorted(volumes.keys()):
-        output.append("#VOLUME%s: %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], volumes[k]))
+        output.append("#VOLUME%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], volumes[k]))
 
     for k in sorted(pans.keys()):
-        output.append("#PAN%s: %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], pans[k]))
+        output.append("#PAN%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], pans[k]))
 
     output.append("#00001: ZZ")
     output.append("#00054: ZZ")
