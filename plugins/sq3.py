@@ -846,7 +846,7 @@ def create_sound_files(json_sq3, params, target_parts):
             running_threads += create_bgm(json_sq3, params, output_bgm_filename)
 
         # Create preview files
-        if 'preview' in json_sq3:
+        if json_sq3.get('preview', None):
             running_threads += create_preview(json_sq3, params, 'dm')
             running_threads += create_preview(json_sq3, params, 'gf')
 
