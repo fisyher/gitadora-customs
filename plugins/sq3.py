@@ -839,11 +839,9 @@ def create_sound_files(json_sq3, params, target_parts):
 
         if 'drum' in target_parts:
             running_threads += create_va3(json_sq3, params, 'drum')
-            output_bgm_filename = os.path.join(output_folder, 'bgm%04d_gbk.bin' % (json_sq3['musicid']))
 
         elif 'guitar' in target_parts or 'bass' in target_parts:
             running_threads += create_va3(json_sq3, params, 'guitar')
-            output_bgm_filename = os.path.join(output_folder, 'bgm%04dd__k.bin' % (json_sq3['musicid']))
 
         # Create preview files
         if json_sq3.get('preview', None):
