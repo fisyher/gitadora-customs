@@ -1,3 +1,47 @@
+# Docs:
+# https://osdn.net/projects/dtxmania/wiki/DTX%20data%20format
+# https://osdn.net/projects/dtxmania/wiki/%E3%83%81%E3%83%A3%E3%83%B3%E3%83%8D%E3%83%AB%E5%AE%9A%E7%BE%A9%E8%A1%A8
+
+# Auto lane override details: https://osdn.net/projects/dtxmania/ticket/26338
+
+# Unsupported DTX commands:
+# GENRE
+# COMMENT
+# PANEL
+# HIDDENLEVEL
+# STAGEFILE
+# PREMOVIE
+# BACKGROUND
+# BACKGROUND_GR
+# WALL
+# BMP
+# SOUND_NOWLOADING
+# SOUND_STAGEFAILED
+# SOUND_FULLCOMBO
+# SOUND_AUDIENCE
+# RESULTIMAGE
+# RESULTIMAGE_xx
+# RESULTMOVIE
+# RESULTMOVIE_xx
+# RESULTSOUND
+# RESULTSOUND_xx
+# SIZEzz
+# BMPzz
+# BMPTEXzz
+# BGAzz
+# BGAPANzz
+# AVIzz
+# VIDEOzz
+# AVIPANzz
+# MIDINOTE
+# RANDOM
+# IF
+# DTXVPLAYSPEED
+# USE556X710BGAAVI
+# MIDIFILE
+# BLACKCOLORKEY
+
+
 import copy
 from fractions import Fraction
 import json
@@ -212,6 +256,7 @@ def get_value_from_dtx(target_tag, lines, default=None):
 
 def get_bpms_from_dtx(lines):
     bpms = {}
+    base_bpm = 0
 
     for line in lines:
         matches = re.match(r"#(?P<tag>[A-Za-z0-9]+):?\s*(?P<value>.*)", line)
@@ -237,7 +282,10 @@ def get_bpms_from_dtx(lines):
 
             bpms[bpm_id] = float(value)
 
-    return bpms
+        elif tag.startswith("BASEBPM"):
+            base_bpm = float(value)
+
+    return bpms, base_bpm
 
 
 def get_wavs_from_dtx(lines, target_parts, sound_metadata, get_wav_length=True):
@@ -917,7 +965,7 @@ def get_chart_datas(chart_data, lines):
     guitar_difficulty = get_value_from_dtx("GLEVEL", lines, default=0)
     bass_difficulty = get_value_from_dtx("BLEVEL", lines, default=0)
     pre_image = get_value_from_dtx("PREIMAGE", lines)
-    bpms = get_bpms_from_dtx(lines)
+    bpms, base_bpm = get_bpms_from_dtx(lines)
     first_bpm = bpms[sorted(bpms.keys(), key=lambda x:int(x))[0]]
 
     drum_chart_data = {
@@ -1039,7 +1087,7 @@ def parse_dtx_to_intermediate(filename,
     wav_filenames, wav_lengths = get_wavs_from_dtx(lines, target_parts, sound_metadata, params.get('no_sound', False))
     wav_volumes = get_wav_volumes_from_dtx(lines)
     wav_pans = get_wav_pans_from_dtx(lines)
-    bpms = get_bpms_from_dtx(lines)
+    bpms, base_bpm = get_bpms_from_dtx(lines)
 
     bonus_notes = get_bonus_notes_from_dtx(lines, start_offset_padding)
     measure_lengths = get_measure_lengths_from_dtx(lines, start_offset_padding)
@@ -1228,6 +1276,38 @@ def parse_dtx_to_intermediate(filename,
                                 'timestamp': timestamp / 300
                             })
 
+                elif event == 0x03:
+                    # Base BPM addition
+                    data = events_by_measure[measure][event]
+                    for i in range(len(data)):
+                        if data[i] == '00':
+                            continue
+
+                        beat = global_beat_metadata + i
+
+                        if beat not in metadata_chart_data['beats']:
+                            metadata_chart_data['beats'][beat] = []
+
+                        new_bpm = int(data[i], 16) + base_bpm
+
+                        metadata_chart_data['beats'][beat].append({
+                            "data": {
+                                "bpm": new_bpm
+                            },
+                            "name": "bpm",
+                            "timestamp": calculate_current_timestamp(
+                                measure,
+                                i % len(data),
+                                measure_lengths,
+                                bpms_at_measure_beat
+                            ),
+                        })
+
+                        if beat > last_event[2]:
+                            last_event = (measure, i, beat)
+
+                        last_seen_bpm = new_bpm
+
                 elif event == 0x08:
                     # BPM event
                     data = events_by_measure[measure][event]
@@ -1247,7 +1327,7 @@ def parse_dtx_to_intermediate(filename,
                         if not (measure == 0 and beat == 0):
                             metadata_chart_data['beats'][beat].append({
                                 "data": {
-                                    "bpm": bpms[int(data[i], 36)]
+                                    "bpm": base_bpm + bpms[int(data[i], 36)]
                                 },
                                 "name": "bpm",
                                 "timestamp": calculate_current_timestamp(
@@ -1261,7 +1341,7 @@ def parse_dtx_to_intermediate(filename,
                             if beat > last_event[2]:
                                 last_event = (measure, i, beat)
 
-                            last_seen_bpm = bpms[int(data[i], 36)]
+                            last_seen_bpm = base_bpm + bpms[int(data[i], 36)]
 
                 elif event == 0xc2:
                     # baron/off

@@ -9,16 +9,19 @@ import helper
 
 helper.check_ffmpeg()
 
+
 def get_audio_file(filename):
+    filename = helper.getCaseInsensitivePath(filename)
     if not filename or not os.path.exists(filename):
         return None
 
     if filename.lower().endswith('.xa'):
-        filename =  get_wav_from_xa(filename)
+        filename = get_wav_from_xa(filename)
 
     return pydub.AudioSegment.from_file(filename)
 
 def get_duration(filename):
+    filename = helper.getCaseInsensitivePath(filename)
     sound_file = get_audio_file(filename)
 
     if not sound_file:
@@ -32,7 +35,9 @@ def merge_bgm(bgm_info, input_foldername, output_filename=None):
     # Find maximum duration of BGM
     channels = 1
     for bgm in bgm_info['data']:
-        bgm['file'] = pydub.AudioSegment.from_file(os.path.join(input_foldername, bgm['filename']))
+        filename = helper.getCaseInsensitivePath(os.path.join(input_foldername, bgm['filename']))
+        print(filename)
+        bgm['file'] = pydub.AudioSegment.from_file(filename)
         duration = bgm['timestamp'] + len(bgm['file']) / 1000
 
         if bgm['file'].channels > channels:
@@ -57,6 +62,8 @@ def merge_bgm(bgm_info, input_foldername, output_filename=None):
     return temp_filename
 
 def get_wav_from_xa(input_filename):
+    input_filename = helper.getCaseInsensitivePath(input_filename)
+
     prefix = ""
     if os.name != "nt":
         prefix = "wine"
@@ -70,6 +77,8 @@ def get_wav_from_xa(input_filename):
     return temp_filename
 
 def get_processed_wav(input_filename, output_filename=None, channels=1, bits=16, rate=48000):
+    input_filename = helper.getCaseInsensitivePath(input_filename)
+
     output = get_audio_file(input_filename)
 
     if not output:

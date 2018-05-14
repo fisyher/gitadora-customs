@@ -12,6 +12,7 @@ import pydub
 
 import audio
 import tmpfile
+import helper
 
 import adpcmwave
 
@@ -119,7 +120,9 @@ def write_vas3(input_foldername, output_filename, metadata=None):
                         break
 
             # Build full path
+
             filename = os.path.join(input_foldername, os.path.normpath(filename.replace("\\","/")))
+            filename = helper.getCaseInsensitivePath(filename)
 
             if not os.path.exists(filename):
                 print("Could not find %s" % filename)

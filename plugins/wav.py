@@ -9,6 +9,7 @@ import string
 import tmpfile
 import audio
 import wavbintool
+import helper
 
 import imageio
 imageio.plugins.ffmpeg.download()
@@ -34,7 +35,9 @@ def get_base_audio(input_foldername, bgm_filename, chart_data, no_bgm):
         # Create silent audio file
         output_audio = pydub.AudioSegment.silent(duration=duration * 1000)
     else:
-        output_audio = pydub.AudioSegment.from_file(os.path.join(input_foldername, bgm_filename))
+        filename = os.path.join(input_foldername, bgm_filename)
+        filename = helper.getCaseInsensitivePath(filename)
+        output_audio = audio.get_audio_file(filename)
 
     return output_audio
 
@@ -125,9 +128,9 @@ def create_wav_from_chart(chart_data,
                 else:
                     pan = (pan - (128 / 2)) / (128 / 2)
 
-                wav_filename = find_sound_filename(os.path.join(input_foldername, wav_filename))
+                wav_filename = find_sound_filename(helper.getCaseInsensitivePath(os.path.join(input_foldername, wav_filename)))
                 if os.path.exists(wav_filename):
-                    keysound = pydub.AudioSegment.from_file(wav_filename)
+                    keysound = audio.get_audio_file(wav_filename)
                     keysound = keysound.pan(pan)
                     db = percentage_to_db((volume / 127) * 100)
                     keysound += db
@@ -351,7 +354,7 @@ def generate_wav_from_json(params, generate_output_filename=True):
     print("Saving to %s..." % output_filename)
 
     if not params.get('render_no_bgm', False):
-        output_audio = pydub.AudioSegment.from_file(bgm_filename)
+        output_audio = audio.get_audio_file(bgm_filename)
     else:
         if len(bgms) == 0:
             return
