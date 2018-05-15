@@ -14,7 +14,7 @@ class JsonFormat:
         if not input_filename or not os.path.exists(input_filename):
             return None
 
-        with open(input_filename, "rb", encoding="utf-8") as f:
+        with open(input_filename, "rb") as f:
             return json.load(f)
 
     @staticmethod
