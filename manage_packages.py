@@ -406,18 +406,18 @@ def add_packages_to_mdb(mdb_filename, packages, fresh):
     return list(set(dupes))
 
 
-def get_package_info(packages_directory="packages"):
+def get_package_info(game_directory=""):
     packages = []
 
-    for filename in glob.glob(os.path.join(packages_directory, "**\\package.json")):
-        package = json.load(open(filename, "r", encoding="utf-8"))
+    for file in glob.glob(os.path.join(game_directory, "packages/**/package.json")):
+        package = json.load(open(file, "r", encoding="utf-8"))
 
         if 'unique_id' not in package:
             package['unique_id'] = str(uuid.uuid4()).replace("-","")
-            json.dump(package, open(filename, "w", encoding="utf-8"), ensure_ascii=False, indent=4, separators=(', ', ': '))
+            json.dump(package, open(file, "w", encoding="utf-8"), ensure_ascii=False, indent=4, separators=(', ', ': '))
             print("Added new unique_id to package info")
 
-        package['__directory'] = os.path.dirname(filename)
+        package['__directory'] = os.path.dirname(file)
         packages.append(package)
 
     return packages
@@ -428,7 +428,7 @@ def prepare_graphics_for_package(package):
     output_directory = tmpfile.mkdtemp("textgen")
 
     # TODO: mono for Linux?
-    subprocess.call("{} solid \"{}\" \"{}\" \"{}\"".format(resource_path(os.path.join("tools", "gitadora-textgen.exe")), package['title'], package['artist'], output_directory), shell=True)
+    subprocess.call("\"{}\" solid \"{}\" \"{}\" \"{}\"".format(resource_path(os.path.join("tools", "gitadora-textgen.exe")), package['title'], package['artist'], output_directory), shell=True)
 
     def copy_file(entry_name, filename):
         if 'graphics' not in package:
@@ -934,8 +934,8 @@ def add_packages_to_phrase_address_list(filename, packages, dupes):
     save_phrase_address_list(filename, pal)
 
 
-def install_packages(game_directory="", packages_directory="", game_data_folder="data", fresh=False):
-    packages = get_package_info(packages_directory)
+def install_packages(game_directory="", game_data_folder="data", fresh=False):
+    packages = get_package_info(game_directory)
 
     game_data_folder = os.path.join(game_directory, game_data_folder)
 
@@ -955,7 +955,7 @@ def install_packages(game_directory="", packages_directory="", game_data_folder=
             shutil.copy(os.path.join(package['__directory'], package['files']['movie']), os.path.join("data", "product", "movie", "music", "mv%04d.wmv" % package['music_id']))
 
     # Generate archives
-    last_id = get_last_archive_id(os.path.join(game_directory, "libshare-pj.dll"))
+    last_id = get_last_archive_id()
 
     if last_id:
         create_graphic_texbin_for_packages(packages, "jacket_small", "img_jkb", os.path.join(game_data_folder, "product", "d3", "model", "tex_img_jkb%02d.bin" % last_id))
@@ -1012,7 +1012,7 @@ def convert_image_to_tex(input_filename, output_filename):
     image_filename = shutil.copy(input_filename, output_filename)
 
     # Call gitadora-textool
-    subprocess.call("{} \"{}\"".format(resource_path(os.path.join("tools", "gitadora-textool.exe")), image_filename), shell=True)
+    subprocess.call("\"{}\" \"{}\"".format(resource_path(os.path.join("tools", "gitadora-textool.exe")), image_filename), shell=True)
 
     # Delete file from tolder
     os.unlink(image_filename)
@@ -1030,7 +1030,7 @@ def create_graphic_texbin_for_packages(packages, key, base_filename, output_file
 
     tmpfile.add_temp_folder(texbin_directory)
 
-    subprocess.call("{} \"{}\"".format(resource_path(os.path.join("tools", "gitadora-texbintool.exe")), output_filename), shell=True)
+    subprocess.call("\"{}\" \"{}\"".format(resource_path(os.path.join("tools", "gitadora-texbintool.exe")), output_filename), shell=True)
 
     # Copy all images to texbin folder with appropriate filenames
     for package in packages:
@@ -1041,7 +1041,7 @@ def create_graphic_texbin_for_packages(packages, key, base_filename, output_file
             shutil.copy(image_filename, output_image_filename)
 
     # Create texbin
-    subprocess.call("{} \"{}\"".format(resource_path(os.path.join("tools", "gitadora-texbintool.exe")), texbin_directory), shell=True)
+    subprocess.call("\"{}\" \"{}\"".format(resource_path(os.path.join("tools", "gitadora-texbintool.exe")), texbin_directory), shell=True)
 
 
 def patch_graphics_for_customs(game_directory="", jacket_folder="data\\product\\jacket\\", customs_banner_image="customs_banner.png", customs_jacket_image="customs_jacket.png"):
@@ -1079,8 +1079,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-g', '--game-dir', help='Input game directory', default="")
-    parser.add_argument('-p', '--packages-dir', help='Input packages directory', default="")
     args = parser.parse_args()
 
     patch_game_for_customs(args.game_dir)
-    install_packages(args.game_dir, args.packages_dir)
+    install_packages(args.game_dir)
