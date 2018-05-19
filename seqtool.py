@@ -239,7 +239,7 @@ if __name__ == "__main__":
         else:
             sound_folder = tmpfile.mkdtemp(prefix="sounds")
 
-        if not os.path.exists(sound_folder):
+        if not os.path.exists(sound_folder) and not args.no_sounds:
             os.makedirs(sound_folder)
 
         if args.input_ifs_bgm and not args.no_sounds:

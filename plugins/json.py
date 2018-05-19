@@ -15,7 +15,7 @@ class JsonFormat:
             return None
 
         with open(input_filename, "rb") as f:
-            return json.load(f)
+            return json
 
     @staticmethod
     def to_chart(params):
