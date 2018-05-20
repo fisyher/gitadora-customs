@@ -30,11 +30,11 @@ args = parser.parse_args()
 
 if args.mix_phase:
     if not args.mix_base_volume:
-        args.mix_base_volume = -1.5
+        args.mix_base_volume = -2
     if not args.mix_guitar_volume:
         args.mix_guitar_volume = -2
     if not args.mix_drum_volume:
-        args.mix_drum_volume = -2.75
+        args.mix_drum_volume = -1
 else:
     if not args.mix_base_volume:
         args.mix_base_volume = 0
