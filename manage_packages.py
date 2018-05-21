@@ -147,7 +147,7 @@ def add_song_to_mdb(mdb, package, fresh=False, unsafe=False):
         },
         'first_ver': {
             'type': "u8",
-            'value': [2, 1],
+            'value': [package.get('gf_ver', 2), package.get('dm_ver', 1)],
         },
         'first_classic_ver': {
             'type': "u8",
@@ -159,7 +159,7 @@ def add_song_to_mdb(mdb, package, fresh=False, unsafe=False):
         },
         'b_eemall': {
             'type': "bool",
-            'value': 1,
+            'value': 1 if package.get('real_song', 1) not in [0, 1] else package.get('real_song', 1),
         },
         'order_kana': {
             'type': "u16",
