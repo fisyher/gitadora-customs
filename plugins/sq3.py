@@ -946,7 +946,6 @@ def generate_sq3_file_from_json(params):
     create_package_file(json_sq3, params, song_metadata_drum, song_metadata_guitar, found_parts)
 
 
-
 def get_start_timestamp(chart):
     for timestamp_key in sorted(chart['timestamp'].keys(), key=lambda x: int(x)):
         for beat in chart['timestamp'][timestamp_key]:

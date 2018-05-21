@@ -32,7 +32,7 @@ def get_duration(filename):
 def clip_audio(input_filename, output_filename, duration):
     filename = helper.getCaseInsensitivePath(input_filename)
     sound_file = get_audio_file(filename)[:duration * 1000]
-    sound_file.export(output_filename)
+    sound_file.export(output_filename, format="wav")
     print("Generated", output_filename, len(sound_file) / 1000, duration)
 
 def merge_bgm(bgm_info, input_foldername, output_filename=None):
