@@ -115,7 +115,7 @@ def get_next_id(mdb):
     return next_id
 
 
-def add_song_to_mdb(mdb, package, fresh=False):
+def add_song_to_mdb(mdb, package, fresh=False, unsafe=False):
     xg_diff_list = [0] * 15
     if 'difficulty' in package:
         parts = ['guitar', 'drum', 'bass']
@@ -311,7 +311,11 @@ def add_song_to_mdb(mdb, package, fresh=False):
         print("Removing old object")
         del mdb['records'][k]
 
-    music_id = get_next_id(mdb)
+    music_id = package.get('music_id', None)
+
+    if not music_id or not unsafe:
+        music_id = get_next_id(mdb)
+
     package['music_id'] = music_id
 
     new_record['music_id'] = {
@@ -387,7 +391,7 @@ def save_mdb(mdb, output_filename):
     open(output_filename, "w", encoding="utf-8").write(etree.tostring(mdb_tree, encoding='unicode', pretty_print=True))
 
 
-def add_packages_to_mdb(mdb_filename, packages, fresh):
+def add_packages_to_mdb(mdb_filename, packages, fresh, unsafe):
     if not os.path.exists(mdb_filename):
         print("Couldn't find", mdb_filename)
         return []
@@ -396,7 +400,7 @@ def add_packages_to_mdb(mdb_filename, packages, fresh):
 
     dupes = []
     for package in packages:
-        mdb, dupe = add_song_to_mdb(mdb, package, fresh)
+        mdb, dupe = add_song_to_mdb(mdb, package, fresh, unsafe)
         dupe += dupes
 
     mdb = update_entry_orders(mdb)
@@ -406,18 +410,18 @@ def add_packages_to_mdb(mdb_filename, packages, fresh):
     return list(set(dupes))
 
 
-def get_package_info(game_directory=""):
+def get_package_info(packages_directory="packages"):
     packages = []
 
-    for file in glob.glob(os.path.join(game_directory, "packages/**/package.json")):
-        package = json.load(open(file, "r", encoding="utf-8"))
+    for filename in glob.glob(os.path.join(packages_directory, "**\\package.json")):
+        package = json.load(open(filename, "r", encoding="utf-8"))
 
         if 'unique_id' not in package:
             package['unique_id'] = str(uuid.uuid4()).replace("-","")
-            json.dump(package, open(file, "w", encoding="utf-8"), ensure_ascii=False, indent=4, separators=(', ', ': '))
+            json.dump(package, open(filename, "w", encoding="utf-8"), ensure_ascii=False, indent=4, separators=(', ', ': '))
             print("Added new unique_id to package info")
 
-        package['__directory'] = os.path.dirname(file)
+        package['__directory'] = os.path.dirname(filename)
         packages.append(package)
 
     return packages
@@ -934,14 +938,14 @@ def add_packages_to_phrase_address_list(filename, packages, dupes):
     save_phrase_address_list(filename, pal)
 
 
-def install_packages(game_directory="", game_data_folder="data", fresh=False):
-    packages = get_package_info(game_directory)
+def install_packages(game_directory="", packages_directory="packages", game_data_folder="data", fresh=False, unsafe=False):
+    packages = get_package_info(packages_directory)
 
     game_data_folder = os.path.join(game_directory, game_data_folder)
 
     dupes = []
-    dupes += add_packages_to_mdb(os.path.join(game_data_folder, "product", "xml", "mdb_xg.xml"), packages, fresh)
-    dupes += add_packages_to_mdb(os.path.join(game_data_folder, "product", "xml", "mdb_mt.xml"), packages, fresh)
+    dupes += add_packages_to_mdb(os.path.join(game_data_folder, "product", "xml", "mdb_xg.xml"), packages, fresh, unsafe)
+    dupes += add_packages_to_mdb(os.path.join(game_data_folder, "product", "xml", "mdb_mt.xml"), packages, fresh, unsafe)
 
     add_packages_to_notes_info(os.path.join(game_data_folder, "product", "xml", "notes_info.xml"), packages, dupes)
     add_packages_to_phrase_address_list(os.path.join(game_data_folder, "product", "xml", "phrase_address_list.xml"), packages, dupes)
@@ -955,7 +959,7 @@ def install_packages(game_directory="", game_data_folder="data", fresh=False):
             shutil.copy(os.path.join(package['__directory'], package['files']['movie']), os.path.join("data", "product", "movie", "music", "mv%04d.wmv" % package['music_id']))
 
     # Generate archives
-    last_id = get_last_archive_id()
+    last_id = get_last_archive_id(os.path.join(game_directory, "libshare-pj.dll"))
 
     if last_id:
         create_graphic_texbin_for_packages(packages, "jacket_small", "img_jkb", os.path.join(game_data_folder, "product", "d3", "model", "tex_img_jkb%02d.bin" % last_id))
@@ -1079,7 +1083,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-g', '--game-dir', help='Input game directory', default="")
+    parser.add_argument('-p', '--packages-dir', help='Input packages directory', default="packages")
+    parser.add_argument('-u', '--unsafe', help='Enable unsafe mode', default=False, action='store_true')
     args = parser.parse_args()
 
     patch_game_for_customs(args.game_dir)
-    install_packages(args.game_dir)
+    install_packages(args.game_dir, args.packages_dir, unsafe=args.unsafe)
