@@ -938,7 +938,10 @@ def generate_sq3_file_from_json(params):
         pre_image = os.path.join(params['sound_folder'], pre_image)
         pre_image_output = "pre" + os.path.splitext(pre_image)[-1]
         song_metadata['pre_image'] = pre_image_output
-        shutil.copy(pre_image, os.path.join(output_folder, pre_image_output))
+
+        pre_image_path = os.path.join(output_folder, pre_image_output)
+        if os.path.exists(pre_image_path):
+            shutil.copy(pre_image, pre_image_path)
 
     create_package_file(json_sq3, params, song_metadata_drum, song_metadata_guitar, found_parts)
 

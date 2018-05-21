@@ -706,7 +706,7 @@ def generate_sound_metadata_map(sound_metadata, wav_filenames, wav_volumes, wav_
         if wav_id in wav_pans:
             md['pan'] = int(round(((int(wav_pans[wav_id]) * (128/2)) / 100) + (128/2)))
 
-        map_id = target_id
+        map_id = sound_id
         found_match = False
         for k in sound_metadata['data']:
             item = sound_metadata['data'][k]
