@@ -1,5 +1,7 @@
 # Installing
 
+**REQUIRES PYTHON 3!**
+
 If you just want to use `manage_packages.py`, then install the required packages using
 `python -m pip install -r requirements-manage_packages.txt`
 
