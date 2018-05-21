@@ -671,16 +671,30 @@ def get_long_note_time_by_measure_beat(events_by_measure, long_notes_at_measure_
     return long_note_time_by_measure_beat
 
 
-def generate_sound_metadata_map(sound_metadata, wav_filenames, wav_volumes, wav_pans, target_id=30):
+def generate_sound_metadata_map(sound_metadata, wav_filenames, wav_volumes, wav_pans, target_id=30, override_target_id=100, is_drums=False):
     sound_metadata_map = {}
 
     for wav_id in wav_filenames:
-        while target_id in sound_metadata['data']:
-            target_id += 1
+        filename = wav_filenames[wav_id]
+
+        sound_id = target_id
+        if is_drums and filename.startswith("_override_clipped"):
+            sound_id = override_target_id
+
+        while sound_id in sound_metadata['data']:
+            sound_id += 1
+
+        if is_drums and filename.startswith("_override_clipped"):
+            override_target_id = sound_id
+        else:
+            target_id = sound_id
+
+        if target_id >= 100:
+            print("Ran into override sound IDs, too many drum samples so this will probably sound weird when played in-game", sound_id, filename)
 
         md = {
-            "sound_id": target_id,
-            "filename": wav_filenames[wav_id],
+            "sound_id": sound_id,
+            "filename": filename,
             "volume": 127,  # Max
             "pan": 64  # Center
         }
@@ -1099,7 +1113,7 @@ def parse_dtx_to_intermediate(filename,
     # but volume data is possible.
     # As a result, all volume flags will be stored in the chart data
     # but the panning will be in the sound metadata.
-    sound_metadata_map, sound_metadata = generate_sound_metadata_map(sound_metadata, wav_filenames, wav_volumes, wav_pans)
+    sound_metadata_map, sound_metadata = generate_sound_metadata_map(sound_metadata, wav_filenames, wav_volumes, wav_pans, is_drums='drum' in target_parts)
     sound_metadata_guitar = []
     sound_metadata_drum = []
 
@@ -2097,9 +2111,9 @@ def get_clipped_wav(sound_metadata, sound_entry, duration):
         orig_wav_filename = "%04d.wav" % (next_sound_id)
 
     if "NoFilename" not in sound_entry['flags']:
-        wav_filename = "clipped_%d_%s.wav" % (next_sound_id, sound_entry['filename'])
+        wav_filename = "_override_clipped_%d_%s.wav" % (next_sound_id, sound_entry['filename'])
     else:
-        wav_filename = "clipped_%d_%04d.wav" % (next_sound_id, next_sound_id)
+        wav_filename = "_override_clipped_%d_%04d.wav" % (next_sound_id, next_sound_id)
 
     sound_folder = sound_metadata['sound_folder'] if sound_metadata['sound_folder'] else ""
     orig_wav_filename = os.path.join(sound_folder, orig_wav_filename)
@@ -2497,7 +2511,7 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
                     wav_filename = "%s.wav" % sound_entry['filename']
 
                 if sound_entry.get('clipped', False):
-                    wav_filename = "clipped_%d_%s" % (sound_entry['sound_id'], wav_filename)
+                    wav_filename = "_override_clipped_%d_%s" % (sound_entry['sound_id'], wav_filename)
 
                 break
 
