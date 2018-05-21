@@ -2065,6 +2065,51 @@ def generate_measure_beat_for_chart(chart_data):
     return chart_data
 
 
+def get_clipped_wav(sound_metadata, sound_entry, duration):
+    # Check if a clipped WAV exists of the same length
+    # If one exists, return the existing entry
+    # Otherwise return a newly created entry
+    clipped_wav_entry = None
+
+    duration = round(duration, 3) # Pydub only can handle 3 decimal places
+
+    for entry in sound_metadata['entries']:
+        if not entry.get('clipped', False):
+            continue
+
+        if entry['filename'] == sound_entry['filename'] and entry['duration'] == duration:
+            return entry
+
+    next_sound_id = 100
+    for entry in sound_metadata['entries']:
+        if entry['sound_id'] >= next_sound_id:
+            next_sound_id = entry['sound_id'] + 1
+
+    clipped_wav_entry = copy.deepcopy(sound_entry)
+    clipped_wav_entry['sound_id'] = next_sound_id
+    clipped_wav_entry['clipped'] = True
+    clipped_wav_entry['duration'] = duration
+    sound_metadata['entries'].append(clipped_wav_entry)
+
+    if "NoFilename" not in sound_entry['flags']:
+        orig_wav_filename = "%s.wav" % (sound_entry['filename'])
+    else:
+        orig_wav_filename = "%04d.wav" % (next_sound_id)
+
+    if "NoFilename" not in sound_entry['flags']:
+        wav_filename = "clipped_%d_%s.wav" % (next_sound_id, sound_entry['filename'])
+    else:
+        wav_filename = "clipped_%d_%04d.wav" % (next_sound_id, next_sound_id)
+
+    sound_folder = sound_metadata['sound_folder'] if sound_metadata['sound_folder'] else ""
+    orig_wav_filename = os.path.join(sound_folder, orig_wav_filename)
+    wav_filename = os.path.join(sound_folder, wav_filename)
+
+    audio.clip_audio(orig_wav_filename, wav_filename, duration)
+
+    return clipped_wav_entry
+
+
 def generate_dtx_info(chart_data, sound_metadata, game_type):
     sound_keys = [""]
 
@@ -2075,9 +2120,80 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
     dtx_info = {}
     cur_bpm = None
 
-    # TODO: Refactor this more eventually if possible
+    last_sound_was_mutable = False
+    last_played_note = None
+
+    # TODO: Refactor this more eventually if possible}
     for measure in sorted(chart_data.keys(), key=lambda x: int(x)):
         for beat in sorted(chart_data[measure].keys(), key=lambda x: int(x)):
+
+            for idx in range(len(chart_data[measure][beat])):
+                cd = chart_data[measure][beat][idx]
+
+                if not cd['name'] in ['note']:
+                    continue
+
+                if 'pan' not in cd['data']:
+                    chart_data[measure][beat][idx]['data']['pan'] = 64
+
+                if 'volume' not in cd['data']:
+                    chart_data[measure][beat][idx]['data']['volume'] = 127
+
+                pan = 64  # Center
+                if sound_metadata and 'entries' in sound_metadata:
+                    for sound_entry in sound_metadata['entries']:
+                        if sound_entry['sound_id'] == cd['data']['sound_id']:
+                            if 'volume' in sound_entry:
+                                volume = sound_entry['volume']
+                            if 'pan' in sound_entry:
+                                pan = sound_entry['pan']
+                            break
+
+                pan_final = 0
+                if cd['data'].get('pan') != 64:
+                    pan_final = int(round((cd['data']['pan'] - ((128 - pan) / 2)) / 64 * 100))
+                elif pan != 64:
+                    pan_final = int(round((pan - 64) / 64 * 100))
+
+                # Calculate correct pan
+                # TODO: Put this behind some kind of flag check since it's probably not required for anything before Gitadora
+                if (cd['data']['note'] in ['leftcymbal', 'hihat'] and pan_final > 0) or (cd['data']['note'] in ['floortom', 'rightcymbal'] and pan_final < 0):
+                    pan_final = -pan_final
+
+                chart_data[measure][beat][idx]['data']['pan'] = pan_final
+
+                volume = 127  # 100% volume
+                volume_final = 100
+                if cd['data'].get('volume') != 127:
+                    volume_final = int(round((cd['data']['volume'] / 127) * (volume / 127) * 100))
+                elif volume != 127:
+                    volume_final = int(round((volume / 127) * 100))
+
+                chart_data[measure][beat][idx]['data']['volume'] = volume_final
+
+            is_mutable_sound = False
+            mutable_sound_data = None
+
+            for cd in chart_data[measure][beat]:
+                if not cd['name'] in ['note', 'auto']:
+                    continue
+
+                if cd['data']['sound_id'] >= 100 and game_type == 0:
+                    is_mutable_sound = True
+                    mutable_sound_data = cd
+
+            if is_mutable_sound:
+                for idx in range(len(chart_data[measure][beat])):
+                    if not chart_data[measure][beat][idx]['name'] in ['note', 'auto']:
+                        continue
+
+                    if chart_data[measure][beat][idx]['data']['sound_id'] < 100:
+                        continue
+
+                    # Only the last played mutable sound is actually audible in-game
+                    if chart_data[measure][beat][idx]['data']['sound_id'] != mutable_sound_data['data']['sound_id']:
+                        chart_data[measure][beat][idx]['data']['volume'] = 0
+
             for cd in chart_data[measure][beat]:
                 if measure not in dtx_info:
                     dtx_info[measure] = {}
@@ -2157,6 +2273,56 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                     dtx_info[measure][longnote_field] = d
 
                 elif cd['name'] == "note":
+                    if is_mutable_sound and last_sound_was_mutable:
+                        # Sound id >= 100
+                        # Only one mutable sound can be played at once
+                        sound_entry = None
+                        if sound_metadata and 'entries' in sound_metadata:
+                            for sound_entry in sound_metadata['entries']:
+                                if sound_entry['sound_id'] == last_played_note['data']['data']['sound_id']:
+                                    break
+
+                        if sound_entry:
+                            time_diff = (int(cd['timestamp']) - int(last_played_note['data']['timestamp'])) / 300
+
+                            if time_diff < sound_entry['duration']:
+                                # Set last_played_note['data']['sound_id'] to new sound id of clipped WAV
+                                # Create list of WAVs to be clipped once parsing is done
+                                clipped_wav_metadata = get_clipped_wav(sound_metadata, sound_entry, time_diff)
+
+                                if clipped_wav_metadata:
+                                    prev_sound_id = last_played_note['data']['data']['sound_id']
+                                    last_played_note['data']['data']['sound_id'] = clipped_wav_metadata['sound_id']
+
+                                    mapped_note = dtx_mapping[last_played_note['data']['data']['note']]
+                                    d = dtx_info[last_played_note['measure']][mapped_note]
+
+                                    # TODO: Refactor so this and the next instance of the same code are in their own function
+                                    sound_key = "%04d_%03d_%03d" % (
+                                        last_played_note['data']['data']['sound_id'],
+                                        last_played_note['data']['data']['volume'],
+                                        last_played_note['data']['data']['pan']
+                                    )
+
+                                    prev_sound_key = "%04d_%03d_%03d" % (
+                                        prev_sound_id,
+                                        last_played_note['data']['data']['volume'],
+                                        last_played_note['data']['data']['pan']
+                                    )
+
+                                    if sound_key not in sound_keys:
+                                        sound_keys.append(sound_key)
+                                        sound_id = sound_keys.index(sound_key)
+                                        prev_sound_id = sound_keys.index(prev_sound_key)
+
+                                        sound_files[sound_id] = last_played_note['data']['data']['sound_id']
+                                        volumes[sound_id] = volumes[prev_sound_id]
+                                        pans[sound_id] = pans[prev_sound_id]
+
+                                    sound_id = sound_keys.index(sound_key)
+                                    d[last_played_note['beat']] = base_repr(sound_id, 36, padding=2).upper()[-2:]
+                                    dtx_info[last_played_note['measure']][mapped_note] = d
+
                     mapped_note = dtx_mapping[cd['data']['note']]
 
                     # Fix mapped note for autoplay sounds
@@ -2182,12 +2348,6 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
 
                     d = dtx_info[measure][mapped_note]
 
-                    if 'volume' not in cd['data']:
-                        cd['data']['volume'] = 127
-
-                    if 'pan' not in cd['data']:
-                        cd['data']['pan'] = 64
-
                     if 'auto_volume' in cd['data']:
                         if 'auto_note' not in cd['data'] or cd['data'].get('auto_note') == 1:
                             if cd['data']['auto_volume']:
@@ -2199,33 +2359,13 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                         cd['data']['volume'],
                         cd['data']['pan']
                     )
+
                     if sound_key not in sound_keys:
                         sound_keys.append(sound_key)
                         sound_id = sound_keys.index(sound_key)
-
                         sound_files[sound_id] = cd['data']['sound_id']
-
-                        volume = 127  # 100% volume
-                        pan = 64  # Center
-
-                        if sound_metadata and 'entries' in sound_metadata:
-                            for sound_entry in sound_metadata['entries']:
-                                if sound_entry['sound_id'] == cd['data']['sound_id']:
-                                    if 'volume' in sound_entry:
-                                        volume = sound_entry['volume']
-                                    if 'pan' in sound_entry:
-                                        pan = sound_entry['pan']
-                                    break
-
-                        if cd['data'].get('volume') != 127:
-                            volumes[sound_id] = int(round((cd['data']['volume'] / 127) * (volume / 127) * 100))
-                        elif volume != 127:
-                            volumes[sound_id] = int(round((volume / 127) * 100))
-
-                        if cd['data'].get('pan') != 64:
-                            pans[sound_id] = int(round((cd['data']['pan'] - ((128 - pan) / 2)) / 64 * 100))
-                        elif pan != 64:
-                            pans[sound_id] = int(round((pan - 64) / 64 * 100))
+                        volumes[sound_id] = cd['data']['volume']
+                        pans[sound_id] = cd['data']['pan']
 
                     #print(measure, len(d), beat, cd['time_signature'], cur_bpm)
 
@@ -2281,6 +2421,18 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                         if bonus_note_lane < 0x4c:
                             print("Couldn't find enough bonus note lanes")
 
+
+            last_sound_was_mutable = is_mutable_sound
+
+            if is_mutable_sound:
+                last_played_note = {
+                    'data': mutable_sound_data,
+                    'measure': measure,
+                    'beat': beat,
+                }
+            else:
+                last_played_note = None
+
     return dtx_info, bpms, sound_files, volumes, pans
 
 
@@ -2291,14 +2443,20 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
     chart_data = generate_measure_beat_for_chart(chart_data)
     chart_data = get_chart_data_by_measure_beat(chart_data)
 
+    sound_metadata['sound_folder'] = params.get('sound_folder', None)
+
     dtx_info, bpms, sound_files, volumes, pans = generate_dtx_info(chart_data, sound_metadata, game_type)
 
     output = []
     if 'title' in orig_chart_data['header']:
         output.append("#TITLE %s" % orig_chart_data['header']['title'])
+    else:
+        output.append("#TITLE (no title)")
 
     if 'artist' in orig_chart_data['header']:
         output.append("#ARTIST %s" % orig_chart_data['header']['artist'])
+    else:
+        output.append("#ARTIST (no artist   )")
 
     if 'level' in orig_chart_data['header']:
         for k in orig_chart_data['header']['level']:
@@ -2337,7 +2495,11 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
 
                 if "NoFilename" not in sound_entry['flags']:
                     wav_filename = "%s.wav" % sound_entry['filename']
-                    break
+
+                if sound_entry.get('clipped', False):
+                    wav_filename = "clipped_%d_%s" % (sound_entry['sound_id'], wav_filename)
+
+                break
 
         output.append("#WAV%s %s" % (base_repr(int(k), 36, padding=2).upper()[-2:], wav_filename))
 
