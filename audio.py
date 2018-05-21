@@ -29,6 +29,12 @@ def get_duration(filename):
 
     return len(sound_file) / 1000
 
+def clip_audio(input_filename, output_filename, duration):
+    filename = helper.getCaseInsensitivePath(input_filename)
+    sound_file = get_audio_file(filename)[:duration * 1000]
+    sound_file.export(output_filename)
+    print("Generated", output_filename, len(sound_file) / 1000, duration)
+
 def merge_bgm(bgm_info, input_foldername, output_filename=None):
     longest_duration = bgm_info['end']
 

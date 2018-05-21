@@ -402,6 +402,15 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
             entry['volume'] = 127
             entry['pan'] = 64
 
+        entry['duration'] = len(pydub.AudioSegment.from_file(output_filename)) / 1000
+
+        for idx in range(len(metadata['entries'])):
+            if metadata['entries'][idx]['sound_id'] == entry['sound_id']:
+                metadata['entries'][idx]['volume'] = entry['volume']
+                metadata['entries'][idx]['pan'] = entry['pan']
+                metadata['entries'][idx]['duration'] = entry['duration']
+                break
+
     open(os.path.join(basepath, "metadata.json"), "w").write(json.dumps(metadata, indent=4))
 
 
