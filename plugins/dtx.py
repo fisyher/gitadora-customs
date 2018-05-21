@@ -2602,7 +2602,7 @@ def create_dtx_files(json_dtx, params, charts_data):
         if output_folder:
             output_filename = os.path.join(output_folder, output_filename)
 
-        with open(output_filename, "w", encoding="utf-8") as f:
+        with open(output_filename, "w", encoding="shift-jis") as f:
             f.write(x['data'])
 
 
@@ -2624,7 +2624,7 @@ def create_set_definition_file(json_dtx, params, charts_data):
         if 'title' in x['chart']['header']:
             song_title = x['chart']['header']['title']
 
-    with open(output_set_filename, "a", encoding="utf-8") as outfile:
+    with open(output_set_filename, "a", encoding="shift-jis") as outfile:
         for part in output_set_data:
             if song_title:
                 outfile.write("#TITLE: {} ({})\n".format(song_title, part))
