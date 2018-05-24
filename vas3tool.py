@@ -110,8 +110,11 @@ def write_vas3(input_foldername, output_filename, metadata=None):
         for entry in metadata['entries']:
             filename = entry['filename']
 
-            if '.' not in filename: # Lame way to check if it has an extension
-                # If the filename doesn't have an extension, search for one
+            if "NoFilename" in entry['flags']:
+                filename = "%04x" % entry['sound_id']
+
+            if not os.path.exists(os.path.join(input_foldername, filename)):
+                # Lame way to check if it has an extension
                 for ext in ['wav', 'ogg', 'mp3']:
                     new_filename = "{}.{}".format(filename, ext).replace("\\","/")
 
@@ -136,9 +139,6 @@ def write_vas3(input_foldername, output_filename, metadata=None):
 
             if 'extra' not in entry:
                 entry['extra'] = 255 # Normal?
-
-            if "NoFilename" in entry['flags']:
-                filename = "%04x" % entry['sound_id']
 
             # try:
             #     rate, raw_data, bits = wavfile.read(filename)
