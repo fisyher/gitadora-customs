@@ -608,7 +608,7 @@ def create_package_file(json_sq2, params, song_metadata_drum, song_metadata_guit
             }
         },
         "graphics": {
-            "jacket": song_metadata.get("pre_image", "pre.jpg"),
+            "jacket": song_metadata.get("pre_image", song_metadata.get("pre_image", "pre.jpg")),
         },
         "notes": notes
     }
@@ -859,11 +859,15 @@ def generate_sq2_file_from_json(params):
     song_metadata = song_metadata_drum if song_metadata_drum else song_metadata_guitar
 
     pre_image = song_metadata.get("pre_image", None)
+
     if pre_image and params.get('sound_folder', None):
         pre_image = os.path.join(params['sound_folder'], pre_image)
         pre_image_output = "pre" + os.path.splitext(pre_image)[-1]
         song_metadata['pre_image'] = pre_image_output
-        shutil.copy(pre_image, os.path.join(output_folder, pre_image_output))
+
+        pre_image_path = os.path.join(output_folder, pre_image_output)
+        if os.path.exists(pre_image):
+            shutil.copy(pre_image, pre_image_path)
 
     create_package_file(json_sq2, params, song_metadata_drum, song_metadata_guitar, found_parts)
 
