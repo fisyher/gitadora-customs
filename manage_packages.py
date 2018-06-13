@@ -950,6 +950,9 @@ def install_packages(game_directory="", packages_directory="packages", game_data
     add_packages_to_notes_info(os.path.join(game_data_folder, "product", "xml", "notes_info.xml"), packages, dupes)
     add_packages_to_phrase_address_list(os.path.join(game_data_folder, "product", "xml", "phrase_address_list.xml"), packages, dupes)
 
+    real_last_id = get_last_archive_id(os.path.join(game_directory, "libshare-pj.dll"))
+
+    packages_split = {}
     for package in packages:
         prepare_graphics_for_package(package)
         create_song_data_ifs_for_package(package)
@@ -958,17 +961,23 @@ def install_packages(game_directory="", packages_directory="packages", game_data
         if 'files' in package and 'movie' in package['files']:
             shutil.copy(os.path.join(package['__directory'], package['files']['movie']), os.path.join("data", "product", "movie", "music", "mv%04d.wmv" % package['music_id']))
 
-    # Generate archives
-    last_id = get_last_archive_id(os.path.join(game_directory, "libshare-pj.dll"))
+        # Split packages by music id so it's possible to insert images into the proper archives later
+        package_key = int(("%04d" % package['music_id'])[:2])
 
-    if last_id:
-        create_graphic_texbin_for_packages(packages, "jacket_small", "img_jkb", os.path.join(game_data_folder, "product", "d3", "model", "tex_img_jkb%02d.bin" % last_id))
-        create_graphic_texbin_for_packages(packages, "title_small", "img_idb", os.path.join(game_data_folder, "product", "d3", "model", "tex_img_idb%02d.bin" % last_id))
-        create_graphic_ifs_for_packages(packages, "jacket", "img_jk", os.path.join(game_data_folder, "product", "jacket", "img_jk%02d.ifs" % last_id))
-        create_graphic_ifs_for_packages(packages, "title", "img_id", os.path.join(game_data_folder, "product", "jacket", "img_idw%02d.ifs" % last_id))
-        create_graphic_ifs_for_packages(packages, "artist", "img_at", os.path.join(game_data_folder, "product", "jacket", "img_atw%02d.ifs" % last_id))
-    else:
-        print("Couldn't create image archives")
+        if package_key > real_last_id:
+            package_key = real_last_id
+
+        if package_key not in packages_split:
+            packages_split[package_key] = []
+
+        packages_split[package_key].append(package)
+
+    for last_id in packages_split:
+        create_graphic_texbin_for_packages(packages_split[last_id], "jacket_small", "img_jkb", os.path.join(game_data_folder, "product", "d3", "model", "tex_img_jkb%02d.bin" % last_id))
+        create_graphic_texbin_for_packages(packages_split[last_id], "title_small", "img_idb", os.path.join(game_data_folder, "product", "d3", "model", "tex_img_idb%02d.bin" % last_id))
+        create_graphic_ifs_for_packages(packages_split[last_id], "jacket", "img_jk", os.path.join(game_data_folder, "product", "jacket", "img_jk%02d.ifs" % last_id))
+        create_graphic_ifs_for_packages(packages_split[last_id], "title", "img_id", os.path.join(game_data_folder, "product", "jacket", "img_idw%02d.ifs" % last_id))
+        create_graphic_ifs_for_packages(packages_split[last_id], "artist", "img_at", os.path.join(game_data_folder, "product", "jacket", "img_atw%02d.ifs" % last_id))
 
     tmpfile.tmpcleanup()
 
