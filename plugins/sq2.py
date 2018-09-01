@@ -956,7 +956,8 @@ def generate_sq2_chart_data_from_json(chart):
                 mdata[0x0d] = (beat['data']['denominator'].bit_length() - 1) & 0xff
 
             elif beat['name'] == "note":
-                mdata[0x08:0x0c] = struct.pack("<I", beat['data'].get('sound_id', 0))
+                mdata[0x08:0x0A] = struct.pack("<H", beat['data'].get('sound_id', 0))
+                mdata[0x0A:0x0c] = struct.pack("<H", beat['data'].get('sound_unk', 0))
                 mdata[0x0c] = beat['data'].get('volume', 0) & 0xff
 
                 if 'note' in beat['data']:
@@ -1016,7 +1017,8 @@ def parse_event_block(mdata, game, difficulty, events={}):
         packet_data['numerator'] = mdata[0x0c]
         packet_data['denominator'] = 1 << mdata[0x0d]
     elif mdata[0x05] == 0x00:
-        packet_data['sound_id'] = struct.unpack("<I", mdata[0x08:0x0c])[0]
+        packet_data['sound_id'] = struct.unpack("<H", mdata[0x08:0x0A])[0]
+        packet_data['sound_unk'] = struct.unpack("<H", mdata[0x0A:0x0C])[0]
         packet_data['volume'] = mdata[0x0c]
 
         if (mdata[0x04] & 0x10) == 0x10:
