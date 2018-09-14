@@ -252,8 +252,11 @@ if __name__ == "__main__":
             else:
                 filenames_bgm, ifs_path = ifs.extract(args.input_ifs_bgm)
 
+            if not os.path.exists(args.output):
+                os.makedirs(args.output)
+
             for filename in filenames_bgm:
-                output_filename = os.path.join(sound_folder, os.path.basename(filename))
+                output_filename = os.path.join(args.output, os.path.basename(filename))
                 shutil.copy2(filename, output_filename)
 
         if args.input_ifs_bgm and not args.no_sounds:

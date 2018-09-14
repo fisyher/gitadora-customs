@@ -742,6 +742,12 @@ def create_package_file(json_sq3, params, song_metadata_drum, song_metadata_guit
         "notes": notes
     }
 
+    if json_sq3['musicid'] != None:
+        package_info.update({
+            "real_song": 1,
+            "music_id": json_sq3['musicid'],
+        })
+
     if 'drum' in parts:
         package_info['files']['drum'] = {
             "seq": "d%04d.sq3" % (json_sq3['musicid']),

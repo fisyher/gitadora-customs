@@ -667,6 +667,12 @@ def create_package_file(json_sq2, params, song_metadata_drum, song_metadata_guit
         "notes": notes
     }
 
+    if json_sq2['musicid'] != None:
+        package_info.update({
+            "real_song": 1,
+            "music_id": json_sq2['musicid'],
+        })
+
     if 'drum' in parts:
         package_info['files']['drum'] = {
             "seq": "d%04d.sq2" % (json_sq2['musicid']),
@@ -689,7 +695,8 @@ def generate_song_metadata(charts):
     note_counts = {
         'drum': {},
         'guitar': {},
-        'bass': {}
+        'bass': {},
+        'open': {},
     }
 
     artist_name = ""
@@ -712,6 +719,13 @@ def generate_song_metadata(charts):
             "master": 0
         },
         "bass": {
+            "novice": 0,
+            "basic": 0,
+            "advanced": 0,
+            "extreme": 0,
+            "master": 0
+        },
+        "open": {
             "novice": 0,
             "basic": 0,
             "advanced": 0,

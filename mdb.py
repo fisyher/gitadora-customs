@@ -22,10 +22,12 @@ def get_song_info_from_mdb(input_filename, music_id):
             }
 
             if hasattr(data, 'title_name'):
-                song_info['title'] = data.title_name.text
+                song_info['title'] = data.title_name.text or ""
 
             if hasattr(data, 'artist_title'):
-                song_info['artist'] = data.artist_title.text
+                song_info['artist'] = data.artist_title.text or ""
+            elif hasattr(data, 'artist_title_ascii'):
+                song_info['artist'] = data.artist_title_ascii.text or ""
 
             if hasattr(data, 'xg_diff_list'):
                 # The original ordering is guitar, drum, bass, but I want them to be in drum, guitar, bass order
