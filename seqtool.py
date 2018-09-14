@@ -18,10 +18,7 @@ import event
 
 import plugins
 
-
-USE_THREADS = True
 running_threads = []
-
 
 def find_handler(input_filename, input_format):
     formats = [importlib.import_module('plugins.' + name).get_class() for name in plugins.__all__]
@@ -83,6 +80,9 @@ def process_file(params):
     input = params['input'] if 'input' in params else None
     input_format = params['input_format'] if 'input_format' in params else None
     output_format = params['output_format'] if 'output_format' in params else None
+
+    if output_format == "same":
+        output_format = input_format
 
     input_handler = find_handler(input, input_format)
     output_handler = find_handler(None, output_format)
@@ -150,6 +150,7 @@ if __name__ == "__main__":
     parser.add_argument('--difficulty', nargs='*', choices=['nov', 'bsc', 'adv', 'ext', 'mst', 'all', 'max', 'min'], default="all")
     parser.add_argument('--merge-guitars', action='store_true', help="Merge guitar charts")
     parser.add_argument('--no-sounds', action='store_true', help="Don't convert sound files", default=False)
+    parser.add_argument('--copy-raw-files', action='store_true', help="Copy the raw files without processing", default=False)
     parser.add_argument('--generate-bgms', action='store_true', help="Generate BGMs for various combination of instruments as needed (SQ2/SQ3)", default=False)
 
     parser.add_argument('--music-db', help="Music database file to read metadata about song")
@@ -167,6 +168,8 @@ if __name__ == "__main__":
     parser.add_argument('--dtx-pad-start', help="Pad the start of the song by x measures", default=0, type=int)
     parser.add_argument('--dtx-pad-end', help="Pad the end of the song by x measures", default=2, type=int)
     parser.add_argument('--dtx-fake-timesigs', help="Fake time signatures when converting to DTX to work around x/4 limitation", default=False, action='store_true')
+
+    parser.add_argument('--single-threaded', help="Process charts in single threads", default=False, action='store_true')
 
     args = parser.parse_args()
 
@@ -242,6 +245,17 @@ if __name__ == "__main__":
         if not os.path.exists(sound_folder) and not args.no_sounds:
             os.makedirs(sound_folder)
 
+        if args.input_ifs_bgm and args.copy_raw_files:
+            if os.path.isdir(args.input_ifs_bgm):
+                filenames_bgm = glob.glob(args.input_ifs_bgm + "/*.bin")
+                ifs_path = args.input_ifs_bgm
+            else:
+                filenames_bgm, ifs_path = ifs.extract(args.input_ifs_bgm)
+
+            for filename in filenames_bgm:
+                output_filename = os.path.join(sound_folder, os.path.basename(filename))
+                shutil.copy2(filename, output_filename)
+
         if args.input_ifs_bgm and not args.no_sounds:
             if os.path.isdir(args.input_ifs_bgm):
                 filenames_bgm = glob.glob(args.input_ifs_bgm + "/*.bin")
@@ -256,7 +270,7 @@ if __name__ == "__main__":
 
                 print("Converting %s..." % output_filename)
 
-                if USE_THREADS:
+                if not args.single_threaded:
                     bgm_thread = threading.Thread(target=wavbintool.parse_bin, args=(filename, output_filename))
                     bgm_thread.start()
                     running_threads.append(bgm_thread)
@@ -334,8 +348,20 @@ if __name__ == "__main__":
 
             process_file(params)
 
+
+            if args.input_ifs_seq and args.copy_raw_files:
+                if os.path.isdir(args.input_ifs_seq):
+                    filenames_seq = glob.glob(args.input_ifs_seq + "/*")
+                    ifs_path = args.input_ifs_seq
+                else:
+                    filenames_seq, ifs_path = ifs.extract(args.input_ifs_seq)
+
+                for filename in filenames_seq:
+                    output_filename = os.path.join(sound_folder, os.path.basename(filename))
+                    shutil.copy2(filename, output_filename)
+
         if "guitar" in args.parts or "bass" in args.parts or "open" in args.parts:
-            if USE_THREADS:
+            if not args.single_threaded:
                 guitar_thread = threading.Thread(target=handle_set, args=(guitar,))
                 guitar_thread.start()
                 running_threads.append(guitar_thread)
@@ -343,7 +369,7 @@ if __name__ == "__main__":
                 handle_set(guitar)
 
         if "drum" in args.parts:
-            if USE_THREADS:
+            if not args.single_threaded:
                 drum_thread = threading.Thread(target=handle_set, args=(drum,))
                 drum_thread.start()
                 running_threads.append(drum_thread)
@@ -409,14 +435,14 @@ if __name__ == "__main__":
             "generate_bgms": args.generate_bgms,
         }
 
-        if USE_THREADS:
+        if not args.single_threaded:
             parse_thread = threading.Thread(target=process_file, args=(params,))
             parse_thread.start()
             running_threads.append(parse_thread)
         else:
             process_file(params)
 
-    if USE_THREADS:
+    if not args.single_threaded:
         for thread in running_threads:
             thread.join()
 

@@ -649,13 +649,65 @@ def create_package_file(json_sq3, params, song_metadata_drum, song_metadata_guit
 
     unique_id = get_package_unique_identifier(os.path.join(output_folder, "package.json"))
 
+    basic_levels = {
+        "novice": 0,
+        "basic": 0,
+        "advanced": 0,
+        "extreme": 0,
+        "master": 0
+    }
+
+    if os.path.exists(os.path.join(output_folder, "package.json")):
+        j = json.load(open(os.path.join(output_folder, "package.json"), "r", encoding="utf-8"))
+
+        if not song_metadata_drum:
+            levels = j.get('difficulty', {}).get('drum', basic_levels)
+            notes = j.get('notes', {}).get('drum', {})
+
+            if notes:
+                parts.append("drum")
+
+            song_metadata_drum = {
+                'difficulty_levels': {
+                    'drum': levels
+                },
+                'note_counts': {
+                    'drum': notes
+                },
+            }
+
+        if not song_metadata_guitar:
+            guitar_levels = j.get('difficulty', {}).get('guitar', basic_levels)
+            bass_levels = j.get('difficulty', {}).get('bass', basic_levels)
+            open_levels = j.get('difficulty', {}).get('open', basic_levels)
+
+            guitar_notes = j.get('notes', {}).get('guitar', {})
+            bass_notes = j.get('notes', {}).get('bass', {})
+            open_notes = j.get('notes', {}).get('open', {})
+
+            if guitar_notes or bass_notes or open_notes:
+                parts.append("guitar")
+
+            song_metadata_guitar = {
+                'difficulty_levels': {
+                    'guitar': guitar_levels,
+                    'bass': bass_levels,
+                    'open': open_levels,
+                },
+                'note_counts': {
+                    'guitar': guitar_notes,
+                    'bass': bass_notes,
+                    'open': open_notes,
+                },
+            }
+
     song_metadata = song_metadata_drum if song_metadata_drum else song_metadata_guitar
 
     difficulties = {
-        'drum': song_metadata_drum.get("difficulty_levels", {}).get('drum', {}),
-        'guitar': song_metadata_guitar.get("difficulty_levels", {}).get('guitar', {}),
-        'bass': song_metadata_guitar.get("difficulty_levels", {}).get('bass', {}),
-        'open': song_metadata_guitar.get("difficulty_levels", {}).get('open', {}),
+        'drum': song_metadata_drum.get("difficulty_levels", {}).get('drum', basic_levels),
+        'guitar': song_metadata_guitar.get("difficulty_levels", {}).get('guitar', basic_levels),
+        'bass': song_metadata_guitar.get("difficulty_levels", {}).get('bass', basic_levels),
+        'open': song_metadata_guitar.get("difficulty_levels", {}).get('open', basic_levels),
     }
 
     notes = {
@@ -672,35 +724,36 @@ def create_package_file(json_sq3, params, song_metadata_drum, song_metadata_guit
         "title": song_metadata.get("song_title", ""),
         "title_ascii": helper.romanize(song_metadata.get("song_title", "")),
         "bpm": song_metadata.get("bpm", 0),
+        "bpm2": song_metadata.get("bpm2", 0),
         "difficulty": difficulties,
         "files": {
             "event": "event%04d.ev2" % (json_sq3['musicid']),
             "bgm": {
-                "___k": "bgm0000___k.bin",
-                "__bk": "bgm0000__bk.bin",
-                "_gbk": "bgm0000_gbk.bin",
-                "d__k": "bgm0000d__k.bin",
-                "d_bk": "bgm0000d_bk.bin"
+                "___k": "bgm%04d___k.bin" % (json_sq3['musicid']),
+                "__bk": "bgm%04d__bk.bin" % (json_sq3['musicid']),
+                "_gbk": "bgm%04d_gbk.bin" % (json_sq3['musicid']),
+                "d__k": "bgm%04dd__k.bin" % (json_sq3['musicid']),
+                "d_bk": "bgm%04dd_bk.bin" % (json_sq3['musicid']),
             }
         },
         "graphics": {
-            "jacket": song_metadata.get("pre_image", song_metadata.get("pre_image", "pre.jpg")),
+            "jacket": song_metadata.get("pre_image", "pre.jpg"),
         },
         "notes": notes
     }
 
     if 'drum' in parts:
         package_info['files']['drum'] = {
-            "seq": "d0000.sq3",
-            "sound": "spu0000d.va3",
-            "preview": "i0000dm.bin"
+            "seq": "d%04d.sq3" % (json_sq3['musicid']),
+            "sound": "spu%04dd.va3" % (json_sq3['musicid']),
+            "preview": "i%04ddm.bin" % (json_sq3['musicid']),
         }
 
     if 'guitar' in parts or 'bass' in parts or 'open' in parts:
         package_info['files']['guitar'] = {
-            "seq": "g0000.sq3",
-            "sound": "spu0000g.va3",
-            "preview": "i0000gf.bin"
+            "seq": "g%04d.sq3" % (json_sq3['musicid']),
+            "sound": "spu%04dg.va3" % (json_sq3['musicid']),
+            "preview": "i%04dgf.bin" % (json_sq3['musicid']),
         }
 
     with open(os.path.join(output_folder, "package.json"), "w", encoding="utf-8") as f:
@@ -742,30 +795,32 @@ def generate_song_metadata(charts):
         }
     }
 
-    pre_image = None
+    pre_image = "jacket.png"
 
     for x in charts:
         game_type = ["drum", "guitar", "bass"][x['header']['game_type']]
         difficulty = ['nov', 'bsc', 'adv', 'ext', 'mst'][x['header']['difficulty']]
         note_counts[game_type][difficulty] = get_note_counts_from_json(x, game_type)
 
-        artist_name = x.get('artist', "")
-        song_title = x.get('title', "")
-        bpm = x.get('bpm', 0)
+        artist_name = x.get('header', {}).get('artist', "")
+        song_title = x.get('header', {}).get('title', "")
+        bpm = x.get('header', {}).get('bpm', 0)
+        bpm2 = x.get('header', {}).get('bpm2', 0)
 
         if 'preimage' in x and x['preimage']:
             pre_image = x['preimage']
 
-        if 'level' in x:
+        if 'level' in x['header']:
             levels = ['novice', 'basic', 'advanced', 'extreme', 'master']
             difficulty = levels[x['header']['difficulty']]
-            difficulty_levels[game_type][difficulty] = int(x['level']) * 10
+            difficulty_levels[game_type][difficulty] = int(x['header']['level'][game_type])
 
     return {
         "note_counts": note_counts,
         "artist_name": artist_name,
         "song_title": song_title,
         "bpm": bpm,
+        "bpm2": bpm2,
         "difficulty_levels": difficulty_levels,
         "pre_image": pre_image
     }
@@ -1041,12 +1096,17 @@ def generate_sq3_chart_data_from_json(chart):
 
                 if 'unk' in beat['data']:
                     mdata[0x14:0x18] = struct.pack("<I", beat['data']['unk'])
+                else:
+                    mdata[0x14:0x18] = struct.pack("<I", 0x16c)
 
                 if 'sound_id' in beat['data']:
                     mdata[0x20:0x24] = struct.pack("<I", beat['data']['sound_id'])
 
-                if 'note_length' in beat['data'] and chart['header']['game_type'] != 0:
-                    mdata[0x24:0x28] = struct.pack("<I", beat['data']['note_length'])
+                if chart['header']['game_type'] != 0:
+                    if 'note_length' in beat['data']:
+                        mdata[0x24:0x28] = struct.pack("<I", beat['data']['note_length'])
+                    else:
+                        mdata[0x24:0x28] = struct.pack("<I", 0x40)
 
                 if 'volume' in beat['data']:
                     mdata[0x2d] = beat['data']['volume'] & 0xff
@@ -1249,23 +1309,31 @@ def add_song_info(charts, music_id, music_db):
     if song_info is None or music_db and music_db.endswith(".xml") or not music_db:
         song_info = mdb.get_song_info_from_mdb(music_db if music_db else "mdb_xg.xml", music_id)
 
-    for chart in charts:
-        if chart['header']['is_metadata'] != 0 or not song_info:
+    for chart_idx in range(len(charts)):
+        chart = charts[chart_idx]
+
+        if not song_info:
             continue
 
         game_type = ["drum", "guitar", "bass"][chart['header']['game_type']]
 
         if 'title' in song_info:
-            chart['header']['title'] = song_info['title']
+            charts[chart_idx]['header']['title'] = song_info['title']
 
         if 'artist' in song_info:
-            chart['header']['artist'] = song_info['artist']
+            charts[chart_idx]['header']['artist'] = song_info['artist']
 
         if 'difficulty' in song_info:
             diff_idx = (chart['header']['game_type'] * 5) + chart['header']['difficulty']
-            chart['header']['level'] = {
+            charts[chart_idx]['header']['level'] = {
                 game_type: int(song_info['difficulty'][diff_idx])
             }
+
+        if 'bpm' in song_info:
+            charts[chart_idx]['header']['bpm'] = song_info['bpm']
+
+        if 'bpm2' in song_info:
+            charts[chart_idx]['header']['bpm2'] = song_info['bpm2']
 
     return charts
 

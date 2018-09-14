@@ -39,6 +39,12 @@ def get_song_info_from_mdb(input_filename, music_id):
                 difficulties = difficulties[-4:] + difficulties[:-4]
                 song_info['classics_difficulty'] = [int(x) for x in difficulties]
 
+            if hasattr(data, 'bpm'):
+                song_info['bpm'] = int(data.bpm.text)
+
+            if hasattr(data, 'bpm2'):
+                song_info['bpm2'] = int(data.bpm2.text)
+
             return song_info
 
     return None
