@@ -146,7 +146,7 @@ if __name__ == "__main__":
     parser.add_argument('--output', help='Output file/folder', required=True)
     parser.add_argument('--output-format', help='Output file format', required=True)
 
-    parser.add_argument('--parts', nargs='*', choices=['drum', 'guitar', 'bass', 'all'], default="all")
+    parser.add_argument('--parts', nargs='*', choices=['drum', 'guitar', 'bass', 'open', 'all'], default="all")
     parser.add_argument('--difficulty', nargs='*', choices=['nov', 'bsc', 'adv', 'ext', 'mst', 'all', 'max', 'min'], default="all")
     parser.add_argument('--merge-guitars', action='store_true', help="Merge guitar charts")
     parser.add_argument('--no-sounds', action='store_true', help="Don't convert sound files", default=False)
