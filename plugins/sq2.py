@@ -17,6 +17,7 @@ import wavbintool
 import tmpfile
 
 import plugins.wav as wav
+import audio
 
 USE_THREADS = True
 
@@ -985,6 +986,7 @@ def generate_sq2_chart_data_from_json(chart):
             ]
 
             metadata_events = [
+                "meta",
                 "bpm",
                 "barinfo",
                 "baron",
@@ -1012,7 +1014,10 @@ def generate_sq2_chart_data_from_json(chart):
             mdata[0x00:0x04] = struct.pack("<I", int(timestamp_key))
             mdata[0x05] = EVENT_ID_REVERSE[beat['name']] & 0xff
 
-            if beat['name'] == "bpm":
+            if beat['name'] == "meta":
+                # How to handle?
+                pass
+            elif beat['name'] == "bpm":
                 mdata[0x08:0x0c] = struct.pack("<I", int(round(60000000 / beat['data']['bpm'])))
 
             elif beat['name'] == "barinfo":
@@ -1070,8 +1075,7 @@ def generate_sq2_chart_data_from_json(chart):
 ########################
 #   SQ2 parsing code   #
 ########################
-
-def parse_event_block(mdata, game, difficulty, events={}):
+def parse_event_block(mdata, game, difficulty, events={}, is_metadata=False):
     packet_data = {}
 
     timestamp = struct.unpack("<I", mdata[0x00:0x04])[0]
@@ -1080,8 +1084,8 @@ def parse_event_block(mdata, game, difficulty, events={}):
     event_name = EVENT_ID_MAP[mdata[0x05]]
 
     if mdata[0x05] == 0x10:
-        bpm_mpm = struct.unpack("<I", mdata[0x08:0x0c])[0]
-        packet_data['bpm'] = 60000000 / bpm_mpm
+        bpm_bpm = struct.unpack("<I", mdata[0x08:0x0c])[0]
+        packet_data['bpm'] = 60000000 / bpm_bpm
     elif mdata[0x05] == 0x20:
         # Time signature is represented as numerator/(1<<denominator)
         packet_data['numerator'] = mdata[0x0c]
@@ -1099,7 +1103,7 @@ def parse_event_block(mdata, game, difficulty, events={}):
 
         is_wail = (mdata[0x04] & 0x20) == 0x20
 
-        packet_data['wail_misc'] = 0
+        packet_data['wail_misc'] = 1
         packet_data['guitar_special'] = 1 if is_wail else 0
 
         # TODO: Update code to work with .EVT file data
@@ -1112,6 +1116,9 @@ def parse_event_block(mdata, game, difficulty, events={}):
 
         #         if is_gametype and is_eventtype and is_note and is_diff:
         #             packet_data['bonus_note'] = True
+
+        if is_metadata:
+            event_name = "meta"
 
     elif mdata[0x05] == 0x01:
         # Auto note
@@ -1166,7 +1173,7 @@ def read_sq2_data(data, events):
     for i in range(entry_count):
         mdata = data[header_size + (i * entry_size):header_size + (i * entry_size) + entry_size]
         part = ["drum", "guitar", "bass", "open"][game_type]
-        parsed_data = parse_event_block(mdata, part, difficulty, events)
+        parsed_data = parse_event_block(mdata, part, difficulty, events, is_metadata=is_metadata)
         output['beat_data'].append(parsed_data)
 
     return output
@@ -1329,8 +1336,6 @@ def combine_guitar_charts(guitar_charts, bass_charts):
                 for k in chart2['header']['level']:
                     chart['header']['level'][k] = chart2['header']['level'][k]
 
-            # Add all bass notes to guitar chart data
-            for timestamp_key in chart2['timestamp']:
                 for event in chart2['timestamp'][timestamp_key]:
                     if event['name'] != "note":
                         continue
@@ -1347,6 +1352,19 @@ def combine_guitar_charts(guitar_charts, bass_charts):
 
     return guitar_charts, bass_charts
 
+
+def add_note_durations(chart, sound_metadata):
+    duration_lookup = {}
+
+    for entry in sound_metadata['entries']:
+        duration_lookup[entry['sound_id']] = entry.get('duration', 0)
+
+    for k in chart['timestamp']:
+        for i in range(0, len(chart['timestamp'][k])):
+            if chart['timestamp'][k][i]['name'] in ['note', 'auto']:
+                chart['timestamp'][k][i]['data']['note_length'] = int(round(duration_lookup.get(chart['timestamp'][k][i]['data']['sound_id'], 0) * 300))
+
+    return chart
 
 def generate_json_from_sq2(params):
     combine_guitars = params['merge_guitars'] if 'merge_guitars' in params else False
@@ -1383,6 +1401,10 @@ def generate_json_from_sq2(params):
 
         if not parsed_chart:
             continue
+
+        game_type = ["drum", "guitar", "bass", "open"][parsed_chart['header']['game_type']]
+        if game_type in ["guitar", "bass", "open"]:
+            parsed_chart = add_note_durations(parsed_chart, params.get('sound_metadata', []))
 
         charts.append(parsed_chart)
         charts[-1]['header']['musicid'] = musicid
