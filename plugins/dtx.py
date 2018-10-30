@@ -689,14 +689,15 @@ def generate_sound_metadata_map(sound_metadata, wav_filenames, wav_volumes, wav_
         else:
             target_id = sound_id
 
-        if target_id >= 100:
+        if target_id >= 100 and is_drums:
             print("Ran into override sound IDs, too many drum samples so this will probably sound weird when played in-game", sound_id, filename)
 
         md = {
             "sound_id": sound_id,
             "filename": filename,
             "volume": 127,  # Max
-            "pan": 64  # Center
+            "pan": 64,  # Center
+            'flags': [],
         }
 
         # Volume is broken for drum archives? Too many files causes things to crash
