@@ -17,7 +17,6 @@ import wavbintool
 import tmpfile
 
 import plugins.wav as wav
-import audio
 
 USE_THREADS = True
 
@@ -1355,6 +1354,9 @@ def combine_guitar_charts(guitar_charts, bass_charts):
 
 def add_note_durations(chart, sound_metadata):
     duration_lookup = {}
+
+    if 'entries' not in sound_metadata:
+        return chart
 
     for entry in sound_metadata['entries']:
         duration_lookup[entry['sound_id']] = entry.get('duration', 0)
