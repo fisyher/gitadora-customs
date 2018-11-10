@@ -79,6 +79,7 @@ NOTE_MAPPING = {
         0x05: "g_rxb",
         0x06: "g_xgb",
         0x07: "g_rgb",
+        0x10: 'g_open',
         0xff: "auto",
     },
     'bass': {
@@ -89,6 +90,7 @@ NOTE_MAPPING = {
         0x05: "b_rxb",
         0x06: "b_xgb",
         0x07: "b_rgb",
+        0x10: 'b_open',
         0xff: "auto",
     },
     'open': {
@@ -1355,7 +1357,7 @@ def combine_guitar_charts(guitar_charts, bass_charts):
 def add_note_durations(chart, sound_metadata):
     duration_lookup = {}
 
-    if 'entries' not in sound_metadata:
+    if not sound_metadata or 'entries' not in sound_metadata:
         return chart
 
     for entry in sound_metadata['entries']:
