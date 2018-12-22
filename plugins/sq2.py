@@ -1104,7 +1104,7 @@ def parse_event_block(mdata, game, difficulty, events={}, is_metadata=False):
 
         is_wail = (mdata[0x04] & 0x20) == 0x20
 
-        packet_data['wail_misc'] = 1
+        packet_data['wail_misc'] = 1 if is_wail else 0
         packet_data['guitar_special'] = 1 if is_wail else 0
 
         # TODO: Update code to work with .EVT file data
