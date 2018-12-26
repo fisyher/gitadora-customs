@@ -23,4 +23,17 @@ def extract(filename, path=None, progress=False):
 def create(foldername, output_filename, progress=False):
     IFS(foldername).repack(progress=progress, path=output_filename, use_cache=True)
 
-    return output_filename
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-p', '--pack', action='store_true', help='pack all files in input folder to output ifs file')
+    group.add_argument('-u', '--unpack', action='store_true', help='unpack input ifs file to output folder')
+    parser.add_argument('-i', '--input', help='Input file/folder', required=True)
+    parser.add_argument('-o', '--output', help='Output file/folder', required=True)
+    parser.add_argument('-s', '--silent', help='Turns off progress meter', type=bool, default=False)
+    args = parser.parse_args()
+    if args.pack:
+        create(args.input, args.output, args.silent)
+    elif args.unpack:
+        extract(args.input, args.output, args.silent)	
