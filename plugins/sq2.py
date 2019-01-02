@@ -1046,7 +1046,8 @@ def generate_sq2_chart_data_from_json(chart):
 
             elif beat['name'] == "auto":
                 mdata[0x04] = 0
-                mdata[0x08:0x0c] = struct.pack("<I", beat['data'].get('sound_id', 0))
+                mdata[0x08:0x0A] = struct.pack("<H", beat['data'].get('sound_id', 0))
+                mdata[0x0A:0x0c] = struct.pack("<H", beat['data'].get('sound_unk', 0))
                 mdata[0x0c] = beat['data'].get('volume', 0) & 0xff
 
             event_data.append(bytearray(mdata))
@@ -1123,7 +1124,8 @@ def parse_event_block(mdata, game, difficulty, events={}, is_metadata=False):
 
     elif mdata[0x05] == 0x01:
         # Auto note
-        packet_data['sound_id'] = struct.unpack("<I", mdata[0x08:0x0c])[0]
+        packet_data['sound_id'] = struct.unpack("<H", mdata[0x08:0x0A])[0]
+        packet_data['sound_unk'] = struct.unpack("<H", mdata[0x0A:0x0C])[0]
         packet_data['volume'] = mdata[0x0c]
         packet_data['note'] = "auto"
         packet_data['auto_volume'] = 1
