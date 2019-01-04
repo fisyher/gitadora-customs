@@ -2141,10 +2141,9 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
     last_sound_was_mutable = False
     last_played_note = None
 
-    # TODO: Refactor this more eventually if possible}
+    # TODO: Refactor this more eventually if possible
     for measure in sorted(chart_data.keys(), key=lambda x: int(x)):
         for beat in sorted(chart_data[measure].keys(), key=lambda x: int(x)):
-
             for idx in range(len(chart_data[measure][beat])):
                 cd = chart_data[measure][beat][idx]
 

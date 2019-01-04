@@ -103,7 +103,7 @@ def process_file(params):
     json_data = input_handler.to_json(params)
 
     # Filter based on difficulty and parts here
-    #json_data = filter_charts(json_data, params)
+    json_data = filter_charts(json_data, params)
 
     if output_format.lower() != 'wav' and 'output' in params and not os.path.exists(params['output']):
         os.makedirs(params['output'])
