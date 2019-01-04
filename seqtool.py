@@ -133,13 +133,13 @@ if __name__ == "__main__":
     input_group.add_argument('--sound-folder', help='Input folder containing sounds', default="")
     input_group.add_argument('--event-file', help='Input file containing event information (for SQ2/SQ3)')
 
-    input_dtx_group = parser.add_argument_group('input_dtx')
+    input_split_group = parser.add_argument_group('input_split')
     for part in ['drum', 'guitar', 'bass', 'open']:
-        input_dtx_group.add_argument('--input-%s-nov' % part, help="DTX novice %s chart input (for creation)" % part)
-        input_dtx_group.add_argument('--input-%s-bsc' % part, help="DTX basic %s chart input (for creation)" % part)
-        input_dtx_group.add_argument('--input-%s-adv' % part, help="DTX advanced %s chart input (for creation)" % part)
-        input_dtx_group.add_argument('--input-%s-ext' % part, help="DTX extreme %s chart input (for creation)" % part)
-        input_dtx_group.add_argument('--input-%s-mst' % part, help="DTX master %s chart input (for creation)" % part)
+        input_split_group.add_argument('--input-%s-nov' % part, help="DTX novice %s chart input (for creation)" % part)
+        input_split_group.add_argument('--input-%s-bsc' % part, help="DTX basic %s chart input (for creation)" % part)
+        input_split_group.add_argument('--input-%s-adv' % part, help="DTX advanced %s chart input (for creation)" % part)
+        input_split_group.add_argument('--input-%s-ext' % part, help="DTX extreme %s chart input (for creation)" % part)
+        input_split_group.add_argument('--input-%s-mst' % part, help="DTX master %s chart input (for creation)" % part)
 
     input_ifs_group = parser.add_argument_group('input_ifs')
     input_ifs_group.add_argument('--input-ifs-seq', help='Input file/folder for SEQ (IFS)')
@@ -308,7 +308,7 @@ if __name__ == "__main__":
                 "events": file_set['events'] if 'events' in file_set else {},
                 "musicdb": args.music_db,
                 "musicid": args.music_id,
-                "input_dtx": {
+                "input_split": {
                     "drum": {
                         "nov": args.input_drum_nov,
                         "bsc": args.input_drum_bsc,
@@ -397,7 +397,7 @@ if __name__ == "__main__":
             "events": event.get_bonus_notes_by_timestamp(eamxml.get_raw_xml(open(args.event_file, "rb").read())) if args.event_file else {},
             "musicdb": args.music_db,
             "musicid": args.music_id,
-            "input_dtx": {
+            "input_split": {
                 "drum": {
                     "nov": args.input_drum_nov,
                     "bsc": args.input_drum_bsc,

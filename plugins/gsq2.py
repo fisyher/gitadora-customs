@@ -43,6 +43,30 @@ NOTE_MAPPING = {
         0x08: "auto",
         0x10: 'g_open',
     },
+    
+    'bass': {
+        0x01: "b_rxx",
+        0x02: "b_xgx",
+        0x03: "b_rgx",
+        0x04: "b_xxb",
+        0x05: "b_rxb",
+        0x06: "b_xgb",
+        0x07: "b_rgb",
+        0x08: "auto",
+        0x10: 'b_open',
+    },
+
+    'open': {
+        0x01: "g_rxx",
+        0x02: "g_xgx",
+        0x03: "g_rgx",
+        0x04: "g_xxb",
+        0x05: "g_rxb",
+        0x06: "g_xgb",
+        0x07: "g_rgb",
+        0x08: "auto",
+        0x10: 'g_open',
+    },
 }
 
 REVERSE_NOTE_MAPPING = {
@@ -352,10 +376,8 @@ def parse_event_block(mdata, game, difficulty, is_metadata=False):
         packet_data['volume'] = 127
 
         if (cmd & 0x40) != 0:
-            if param3 == 1:
-                packet_data['note'] = NOTE_MAPPING[game][0x10] # open note
-            else:
-                raise Exception("Unknown param3: {}".format(param3))
+            packet_data['note'] = NOTE_MAPPING[game][0x10] # open note
+            packet_data['auto_unk'] = param3
         else:
             packet_data['note'] = NOTE_MAPPING[game][param3 & 0x0f] # note
 
@@ -383,8 +405,8 @@ def read_gsq2_data(data, game_type, difficulty, is_metadata):
         return None
 
     unk_sys = 0
-    time_division = 300 // 8
-    beat_division = 480 // 8
+    time_division = 300
+    beat_division = 480
 
     output['header'] = {
         "unk_sys": unk_sys,
@@ -448,28 +470,53 @@ def parse_chart_intermediate(chart, game_type, difficulty, is_metadata):
 
 def generate_json_from_gsq2(params):
     combine_guitars = params['merge_guitars'] if 'merge_guitars' in params else False
-    data = open(params['input'], "rb").read() if 'input' in params else None
-
-    if not data:
-        print("No input file data")
-        return
-
     output_data = {}
 
-    magic = data[0:4]
-    if magic != bytearray("GSQ1", encoding="ascii"):
-        print("Not a valid GSQ1 file")
-        exit(-1)
+    def get_data(params, game_type, difficulty, is_metadata):
+        part = ["drum", "guitar", "bass", "open"][game_type]
+        diff = ['nov', 'bsc', 'adv', 'ext', 'mst'][difficulty]
 
-    musicid = struct.unpack("<H", data[0x04:0x06])[0]
+        if 'input_split' in params and part in params['input_split'] and diff in params['input_split'][part] and params['input_split'][part][diff]:
+            data = open(params['input_split'][part][diff], "rb").read()
+            
+            magic = data[0:4]
+            if magic != bytearray("GSQ1", encoding="ascii"):
+                print("Not a valid GSQ1 file:", params['input_split'][part][diff])
+                return None
 
-    output_data['musicid'] = musicid
-    output_data['format'] = Gsq2Format.get_format_name()
+            return (data, game_type, difficulty, is_metadata)
+
+        return None
 
     raw_charts = [
-        (data, 1, 1, True),
-        (data, 1, 1, False)
+        # Guitar
+        get_data(params, 1, 0, False),
+        get_data(params, 1, 1, False),
+        get_data(params, 1, 2, False),
+        get_data(params, 1, 3, False),
+        get_data(params, 1, 4, False),
+        
+        # Bass
+        get_data(params, 2, 0, False),
+        get_data(params, 2, 1, False),
+        get_data(params, 2, 2, False),
+        get_data(params, 2, 3, False),
+        get_data(params, 2, 4, False),
+        
+        # Open
+        get_data(params, 3, 0, False),
+        get_data(params, 3, 1, False),
+        get_data(params, 3, 2, False),
+        get_data(params, 3, 3, False),
+        get_data(params, 3, 4, False),
     ]
+
+    raw_charts = [x for x in raw_charts if x is not None]
+    raw_charts.append((raw_charts[0][0], raw_charts[0][1], raw_charts[0][2], True))
+    
+    musicid = struct.unpack("<H", raw_charts[0][0][0x04:0x06])[0]
+    output_data['musicid'] = musicid
+    output_data['format'] = Gsq2Format.get_format_name()
 
     charts = []
     for chart_info in raw_charts:

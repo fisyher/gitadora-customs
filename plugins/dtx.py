@@ -1634,15 +1634,15 @@ def create_json_from_dtx(params):
             'open': None
         }
 
-        if 'input_dtx' not in params:
+        if 'input_split' not in params:
             return output
 
         for part in ['drum', 'guitar', 'bass', 'open']:
-            if part in params['input_dtx'] and difficulty in params['input_dtx'][part]:
-                filename = params['input_dtx'][part][difficulty]
+            if part in params['input_split'] and difficulty in params['input_split'][part]:
+                filename = params['input_split'][part][difficulty]
 
                 if filename and os.path.exists(filename):
-                    output[part] = params['input_dtx'][part][difficulty]
+                    output[part] = params['input_split'][part][difficulty]
 
         return output
 
