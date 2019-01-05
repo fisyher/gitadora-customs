@@ -52,6 +52,9 @@ def getCaseInsensitivePath(path):
 
 
 def romanize(text):
+    if all(ord(c) < 128 for c in text):
+        return text
+
     kakasi = pykakasi.kakasi()
     kakasi.setMode("H","a")
     kakasi.setMode("K","a")

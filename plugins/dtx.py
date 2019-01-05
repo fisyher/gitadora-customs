@@ -1634,15 +1634,15 @@ def create_json_from_dtx(params):
             'open': None
         }
 
-        if 'input_dtx' not in params:
+        if 'input_split' not in params:
             return output
 
         for part in ['drum', 'guitar', 'bass', 'open']:
-            if part in params['input_dtx'] and difficulty in params['input_dtx'][part]:
-                filename = params['input_dtx'][part][difficulty]
+            if part in params['input_split'] and difficulty in params['input_split'][part]:
+                filename = params['input_split'][part][difficulty]
 
                 if filename and os.path.exists(filename):
-                    output[part] = params['input_dtx'][part][difficulty]
+                    output[part] = params['input_split'][part][difficulty]
 
         return output
 
@@ -2120,6 +2120,9 @@ def get_clipped_wav(sound_metadata, sound_entry, duration):
     orig_wav_filename = os.path.join(sound_folder, orig_wav_filename)
     wav_filename = os.path.join(sound_folder, wav_filename)
 
+    if not os.path.exists(orig_wav_filename):
+        return None
+
     audio.clip_audio(orig_wav_filename, wav_filename, duration)
 
     return clipped_wav_entry
@@ -2138,10 +2141,9 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
     last_sound_was_mutable = False
     last_played_note = None
 
-    # TODO: Refactor this more eventually if possible}
+    # TODO: Refactor this more eventually if possible
     for measure in sorted(chart_data.keys(), key=lambda x: int(x)):
         for beat in sorted(chart_data[measure].keys(), key=lambda x: int(x)):
-
             for idx in range(len(chart_data[measure][beat])):
                 cd = chart_data[measure][beat][idx]
 
@@ -2458,7 +2460,8 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
     chart_data = generate_measure_beat_for_chart(chart_data)
     chart_data = get_chart_data_by_measure_beat(chart_data)
 
-    sound_metadata['sound_folder'] = params.get('sound_folder', None)
+    if sound_metadata is not None:
+        sound_metadata['sound_folder'] = params.get('sound_folder', None)
 
     dtx_info, bpms, sound_files, volumes, pans = generate_dtx_info(chart_data, sound_metadata, game_type)
 
@@ -2471,7 +2474,7 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
     if 'artist' in orig_chart_data['header']:
         output.append("#ARTIST %s" % orig_chart_data['header']['artist'])
     else:
-        output.append("#ARTIST (no artist   )")
+        output.append("#ARTIST (no artist)")
 
     if 'level' in orig_chart_data['header']:
         for k in orig_chart_data['header']['level']:
