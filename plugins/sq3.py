@@ -808,18 +808,27 @@ def generate_song_metadata(charts):
         difficulty = ['nov', 'bsc', 'adv', 'ext', 'mst'][x['header']['difficulty']]
         note_counts[game_type][difficulty] = get_note_counts_from_json(x, game_type)
 
-        artist_name = x.get('header', {}).get('artist', "")
-        song_title = x.get('header', {}).get('title', "")
-        bpm = x.get('header', {}).get('bpm', 0)
-        bpm2 = x.get('header', {}).get('bpm2', 0)
+        # These 4 lines are incorrect, header does not contain any of these data as expected
+        # they are in same level as header, but changing these lines may break other functions
+        #artist_name = x.get('header', {}).get('artist', "")
+        #song_title = x.get('header', {}).get('title', "")
+        #bpm = x.get('header', {}).get('bpm', 0)
+        #bpm2 = x.get('header', {}).get('bpm2', 0)
+        artist_name = x.get('artist', "")
+        song_title = x.get('title', "")
+        bpm = x.get('bpm', 0)
+        bpm2 = x.get('bpm2', 0)
 
         if 'preimage' in x and x['preimage']:
             pre_image = x['preimage']
 
-        if 'level' in x['header']:
+        #Also in correct
+        #if 'level' in x['header']:
+        if 'level' in x:
             levels = ['novice', 'basic', 'advanced', 'extreme', 'master']
             difficulty = levels[x['header']['difficulty']]
-            difficulty_levels[game_type][difficulty] = int(x['header']['level'][game_type])
+            #difficulty_levels[game_type][difficulty] = int(x['header']['level'][game_type])
+            difficulty_levels[game_type][difficulty] = int(x['level'])
 
     return {
         "note_counts": note_counts,
