@@ -510,11 +510,15 @@ def generate_json_from_gsq2(params):
         get_data(params, 3, 3, False),
         get_data(params, 3, 4, False),
     ]
-
     raw_charts = [x for x in raw_charts if x is not None]
-    raw_charts.append((raw_charts[0][0], raw_charts[0][1], raw_charts[0][2], True))
 
-    musicid = struct.unpack("<H", raw_charts[0][0][0x04:0x06])[0]
+    if len(raw_charts) > 0:
+        raw_charts.append((raw_charts[0][0], raw_charts[0][1], raw_charts[0][2], True))
+
+    musicid = -1
+    if len(raw_charts) > 0:
+        musicid = struct.unpack("<H", raw_charts[0][0][0x04:0x06])[0]
+
     output_data['musicid'] = musicid
     output_data['format'] = Gsq1Format.get_format_name()
 

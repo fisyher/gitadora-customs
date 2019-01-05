@@ -43,7 +43,7 @@ NOTE_MAPPING = {
         0x08: "auto",
         0x10: 'g_open',
     },
-    
+
     'bass': {
         0x01: "b_rxx",
         0x02: "b_xgx",
@@ -384,7 +384,7 @@ def parse_event_block(mdata, game, difficulty, is_metadata=False):
         if packet_data['note'] == "auto":
             packet_data['auto_volume'] = 1
             packet_data['auto_note'] = 1
-            
+
         is_wail = (cmd & 0x20) != 0
         packet_data['wail_misc'] = 1 if is_wail else 0
         packet_data['guitar_special'] = 1 if is_wail else 0
@@ -478,7 +478,7 @@ def generate_json_from_gsq2(params):
 
         if 'input_split' in params and part in params['input_split'] and diff in params['input_split'][part] and params['input_split'][part][diff]:
             data = open(params['input_split'][part][diff], "rb").read()
-            
+
             magic = data[0:4]
             if magic != bytearray("GSQ1", encoding="ascii"):
                 print("Not a valid GSQ1 file:", params['input_split'][part][diff])
@@ -495,14 +495,14 @@ def generate_json_from_gsq2(params):
         get_data(params, 1, 2, False),
         get_data(params, 1, 3, False),
         get_data(params, 1, 4, False),
-        
+
         # Bass
         get_data(params, 2, 0, False),
         get_data(params, 2, 1, False),
         get_data(params, 2, 2, False),
         get_data(params, 2, 3, False),
         get_data(params, 2, 4, False),
-        
+
         # Open
         get_data(params, 3, 0, False),
         get_data(params, 3, 1, False),
@@ -510,11 +510,15 @@ def generate_json_from_gsq2(params):
         get_data(params, 3, 3, False),
         get_data(params, 3, 4, False),
     ]
-
     raw_charts = [x for x in raw_charts if x is not None]
-    raw_charts.append((raw_charts[0][0], raw_charts[0][1], raw_charts[0][2], True))
-    
-    musicid = struct.unpack("<H", raw_charts[0][0][0x04:0x06])[0]
+
+    if len(raw_charts) > 0:
+        raw_charts.append((raw_charts[0][0], raw_charts[0][1], raw_charts[0][2], True))
+
+    musicid = -1
+    if len(raw_charts) > 0:
+        musicid = struct.unpack("<H", raw_charts[0][0][0x04:0x06])[0]
+
     output_data['musicid'] = musicid
     output_data['format'] = Gsq2Format.get_format_name()
 

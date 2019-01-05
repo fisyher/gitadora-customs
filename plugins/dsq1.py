@@ -453,7 +453,6 @@ def generate_json_from_dsq1(params):
         get_data(params, 0, 3, False),
         get_data(params, 0, 4, False),
     ]
-
     raw_charts = [x for x in raw_charts if x is not None]
 
     musicid = -1
