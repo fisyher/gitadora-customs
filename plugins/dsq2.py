@@ -380,6 +380,44 @@ def remove_extra_beats(chart):
     return chart
 
 
+def calculate_timesig(chart):
+    found_beats = []
+
+    for x in sorted(chart['beat_data'], key=lambda x: int(x['timestamp'])):
+        if x['name'] in ["measure", "beat"]:
+            found_beats.append(x)
+
+    beat_count = None
+    last_beat = None
+    last_measure = None
+
+    for x in found_beats:
+        if x['name'] == "measure":
+            if beat_count == None:
+                beat_count = 1
+                last_measure = x['timestamp']
+            else:
+                if last_beat != beat_count:
+                    last_beat = beat_count
+
+                    chart['beat_data'].append({
+                        "data": {
+                            "numerator": beat_count,
+                            "denominator": 4,
+                        },
+                        "name": "barinfo",
+                        "timestamp": last_measure
+                    })
+
+                beat_count = 1
+                last_measure = x['timestamp']
+
+        elif x['name'] == "beat":
+            beat_count += 1
+
+    return chart
+
+
 def parse_chart_intermediate(chart, game_type, difficulty, is_metadata):
     chart_raw = read_dsq2_data(chart, game_type, difficulty, is_metadata)
 
@@ -387,6 +425,7 @@ def parse_chart_intermediate(chart, game_type, difficulty, is_metadata):
         return None
 
     chart_raw = remove_extra_beats(chart_raw)
+    chart_raw = calculate_timesig(chart_raw)
     chart_raw = convert_to_timestamp_chart(chart_raw)
 
     start_timestamp = int(get_start_timestamp(chart_raw))
