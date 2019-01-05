@@ -2479,6 +2479,30 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
 
     return dtx_info, bpms, sound_files, volumes, pans
 
+def downscale_beat_division_dtx_chart(input_dtx_info):
+    
+    output_dtx_info = input_dtx_info
+
+    for measure in sorted(output_dtx_info.keys(), key=lambda x: int(x)):
+        for key in sorted(output_dtx_info[measure].keys(), key=lambda x: int(x)):
+            if( len(output_dtx_info[measure][key]) >= 10):
+                in_length = len(output_dtx_info[measure][key])
+                out_length = in_length // 10
+                new_array = ['00'] * out_length
+                for x in range(0, in_length):
+                    if(output_dtx_info[measure][key][x] != '00'):
+                        #Round x to nearest integer after divide by 10
+                        num_y = int(round(x/10.0))
+                        if(num_y >= out_length):
+                            num_y = out_length - 1
+                        #Problem: Later values within 5 beat division will overwrite previous values
+                        #but it shouldn't happen because game never have notes so close to one another
+                        new_array[num_y] = output_dtx_info[measure][key][x]
+                
+                #Overwrite with new reduced array 
+                output_dtx_info[measure][key] = new_array
+
+    return output_dtx_info
 
 def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, params):
     game_type = orig_chart_data['header']['game_type']
@@ -2491,6 +2515,8 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
         sound_metadata['sound_folder'] = params.get('sound_folder', None)
 
     dtx_info, bpms, sound_files, volumes, pans = generate_dtx_info(chart_data, sound_metadata, game_type)
+
+    dtx_info = downscale_beat_division_dtx_chart(dtx_info)
 
     output = []
     if 'title' in orig_chart_data['header']:
