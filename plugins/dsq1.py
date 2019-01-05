@@ -291,8 +291,6 @@ def parse_event_block(mdata, game, difficulty, is_metadata=False):
 
     game_type_id = {"drum": 0, "guitar": 1, "bass": 2, "open": 3}[game]
 
-    print("%08x: %02x %02x %04x" % (timestamp, cmd, param1, param2))
-
     event_name = EVENT_ID_MAP[cmd]
 
     if event_name == "note":
