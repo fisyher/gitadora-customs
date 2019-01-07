@@ -372,7 +372,7 @@ def parse_event_block(mdata, game, difficulty, is_metadata=False):
     event_name = EVENT_ID_MAP[cmd]
 
     if cmd in [0x00, 0x20, 0x40, 0x60]:
-        packet_data['sound_id'] = param1
+        packet_data['sound_id'] = param2
         packet_data['volume'] = 127
 
         if (cmd & 0x40) != 0:

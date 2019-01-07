@@ -41,7 +41,7 @@ VOLUME_TABLE = [ 0, 14, 21, 28,  33,  37,  41,  44,
                 99, 99, 99, 99, 100, 100, 100, 100 ]
 
 
-def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
+def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False, is_guitar=False):
     data = open(input_filename, "rb").read()
 
     entry_count = struct.unpack("<I", data[0x00:0x04])[0]
@@ -80,27 +80,24 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
         entry, filesize, sound_id = entry_info
         #filesize = entries[idx + 1] - entry
 
-        output_filename = os.path.join(basepath, "%04x.pcm" % (sound_id))
+        output_filename = os.path.join(basepath, "%04x.pcm" % (idx))
 
         print("Extracting", output_filename)
         with open(output_filename, "wb") as outfile:
-            outfile.write(struct.pack(">IHHB", filesize, 0, 44100, 1))
+            outfile.write(struct.pack(">IHHB", filesize, 0, 22050 if is_guitar else 44100, 1))
             outfile.write(bytearray([0] * 7))
+            outfile.write(bytearray([0] * 0x800))
             outfile.write(data[entry:entry+filesize])
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-x', '--extract', action='store_true', help='Extraction mode')
-    group.add_argument('-c', '--create', action='store_true', help='Creation mode')
     parser.add_argument('-i', '--input', help='Input file', required=True)
     parser.add_argument('-o', '--output', help='Output file', required=True)
     parser.add_argument('-m', '--mix', action='store_true', help='Mix output files using volume and pan parameters', required=False, default=False)
+    parser.add_argument('-g', '--guitar', action='store_true', help='Is extracting guitar archive', required=False, default=False)
     parser.add_argument('-f', '--force-hex', action='store_true', help='Force hex filenames', required=False, default=False)
     args = parser.parse_args()
 
-    if args.create:
-        write_vas3(args.input, args.output)
-    elif args.extract:
-        read_vas3(args.input, args.output, args.force_hex, args.mix)
+    read_vas3(args.input, args.output, args.force_hex, args.mix, args.guitar)
