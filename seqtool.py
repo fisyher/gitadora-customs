@@ -73,7 +73,7 @@ def filter_charts(json_data, params):
     for chart in filtered_charts:
         json_data['charts'].remove(chart)
 
-    return json.dumps(json_data, indent=4, sort_keys=True)
+    return json.dumps(json_data, indent=4)
 
 
 def process_file(params):
