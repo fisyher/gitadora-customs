@@ -32,7 +32,7 @@ def get_song_info_from_mdb(input_filename, music_id):
             if hasattr(data, 'xg_diff_list'):
                 # The original ordering is guitar, drum, bass, but I want them to be in drum, guitar, bass order
                 difficulties = data.xg_diff_list.text.split(' ')
-                difficulties = difficulties[10:] + difficulties[0:5] + difficulties[5:10]
+                difficulties = difficulties[5:10] + difficulties[0:5] + difficulties[10:]
                 song_info['difficulty'] = [int(x) for x in difficulties]
 
             if hasattr(data, 'classics_diff_list'):
