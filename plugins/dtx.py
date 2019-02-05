@@ -116,6 +116,7 @@ guitar_mapping = {
     "g_rxbyp": 0xd1,
     "g_rgxyp": 0xd2,
     "g_rgbyp": 0xd3,
+    "g_hold" : 0x2c, #Supported by DTXMania AL only
 }
 
 bass_mapping = {
@@ -158,6 +159,7 @@ bass_mapping = {
     "b_rxbyp": 0xe6,
     "b_rgxyp": 0xe7,
     "b_rgbyp": 0xe8,
+    "b_hold" : 0x2d, #Supported by DTXMania AL only
 }
 
 dtx_mapping = {
@@ -200,12 +202,13 @@ drum_range = list(range(0x11, 0x1b + 1))
 guitar_range = list(range(0x20, 0x27 + 1)) + \
     list(range(0x93, 0x9f + 1)) + \
     list(range(0xa9, 0xaf + 1)) + \
-    list(range(0xd0, 0xd3 + 1))
+    list(range(0xd0, 0xd3 + 1)) + \
+    list(range(0x2c, 0x2c + 1))
 
 bass_range = list(range(0xa0, 0xa7 + 1)) + \
     list(range(0xc5, 0xcf + 1)) + \
-    list(range(0xda, 0xe8 + 1))
-
+    list(range(0xda, 0xe8 + 1)) + \
+    list(range(0x2d, 0x2d + 1))
 
 # This is similar to Fraction, except it won't
 # try to reduce the fraction.
@@ -1834,8 +1837,10 @@ def generate_hold_release_events(chart):
 
                     if 'beat' in new_note:
                         del new_note['beat']
-
-                    new_timestamp = str(int(k) + int(beat['data']['hold_duration']))
+                        
+                    #-30 time divisions is a hack to avoid hold release coinciding with other notes
+                    #Equal to 0.1 second
+                    new_timestamp = str(int(k) + int(beat['data']['hold_duration']) - int(chart['header']['time_division'] / 10) ) 
                     if new_timestamp not in chart['timestamp']:
                         chart['timestamp'][new_timestamp] = []
 
@@ -2276,7 +2281,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                 elif cd['name'] == "_note_release":
                     # This is an automatically generated event based on
                     # guitar_special and note_length
-                    longnote_field = [-1, 0x2a, 0x2b, 0x2a][game_type]
+                    longnote_field = [-1, 0x2c, 0x2d, 0x2c][game_type]
 
                     if measure in dtx_info and longnote_field not in dtx_info[measure]:
                         numerator = cd['time_signature']['numerator']
@@ -2412,7 +2417,21 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                         wail_d[beat] = d[beat]
 
                         dtx_info[measure][wail_field] = wail_d
+                    #Hold note support
+                    if 'guitar_special' in cd['data'] and cd['data']['guitar_special'] & 0x02:
+                        hold_field = [-1, 0x2c, 0x2d, 0x2c][game_type]
 
+                        if measure in dtx_info and hold_field not in dtx_info[measure]:
+                            numerator = cd['time_signature']['numerator']
+                            denominator = cd['time_signature']['denominator']
+                            timesig = numerator / denominator
+                            beat_division = int(1920 * timesig)
+                            dtx_info[measure][hold_field] = ['00'] * beat_division
+
+                        hold_d = dtx_info[measure][hold_field]
+                        hold_d[beat] = d[beat]
+
+                        dtx_info[measure][hold_field] = hold_d
                     # Bonus note support
                     if cd['data'].get('bonus_note') and cd['data']['note'] in dtx_bonus_mapping:
                         bonus_note_lane = 0x4f
