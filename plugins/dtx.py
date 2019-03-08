@@ -1101,7 +1101,7 @@ def parse_dtx_to_intermediate(filename,
     default_notes = {}
 
     preview_filename = get_value_from_dtx("PREVIEW", lines)
-    wav_filenames, wav_lengths = get_wavs_from_dtx(lines, target_parts, sound_metadata, params.get('no_sound', False))
+    wav_filenames, wav_lengths = get_wavs_from_dtx(lines, target_parts, sound_metadata, not params.get('no_sounds', False))
     wav_volumes = get_wav_volumes_from_dtx(lines)
     wav_pans = get_wav_pans_from_dtx(lines)
     bpms, base_bpm = get_bpms_from_dtx(lines)
