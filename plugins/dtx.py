@@ -1476,7 +1476,7 @@ def parse_dtx_to_intermediate(filename,
                         elif event in bass_range and 'bass' not in target_parts:
                             continue
 
-                        wail_direction = 0
+                        wail_direction = 1
                         wail_flag = 0
                         wail_event = -1
 
@@ -1504,7 +1504,7 @@ def parse_dtx_to_intermediate(filename,
                                 "sound_id": mapped_sound_id,
                                 "unk": 0,
                                 "volume": 127 if sound_id not in wav_volumes else int(round(127 * (wav_volumes[sound_id] / 100))),
-                                "wail_misc": wail_direction,
+                                "wail_misc": wail_direction if wail_flag else 0,
                                 "guitar_special": wail_flag,
                                 "bonus_note": 1 if measure in bonus_notes and i in bonus_notes[measure] and sound_id in bonus_notes[measure][i] else 0,
                             },
