@@ -653,7 +653,7 @@ def get_long_note_time_by_measure_beat(events_by_measure, long_notes_at_measure_
                 note_beats = [
                     note_beat
                     for note_beat in notes_by_measure_beat[measure]
-                    if note_beat < beat
+                    if note_beat <= beat
                 ]
                 last_note = (measure, sorted(note_beats)[-1])
             else:
