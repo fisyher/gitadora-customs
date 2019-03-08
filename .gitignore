@@ -21,6 +21,9 @@ test_data/output/
 *.skl
 *.mdl
 *.txt
+*.dsq
+*.gsq
+*.vas
 ffmpeg*
 dist/*
 build/*

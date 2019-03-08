@@ -593,13 +593,14 @@ def get_guitar_long_notes_at_measure_beat(events):
     guitar_long_notes_at_measure_beat = {}
 
     for measure in events:
-        if 0x2a in events[measure]:
-            for i in range(len(events[measure][0x2a])):
-                if events[measure][0x2a][i] != "00":
-                    if measure not in guitar_long_notes_at_measure_beat:
-                        guitar_long_notes_at_measure_beat[measure] = {}
+        for long_event in [0x2a, 0x2c]:
+            if long_event in events[measure]:
+                for i in range(len(events[measure][long_event])):
+                    if events[measure][long_event][i] != "00":
+                        if measure not in guitar_long_notes_at_measure_beat:
+                            guitar_long_notes_at_measure_beat[measure] = {}
 
-                    guitar_long_notes_at_measure_beat[measure][i] = True
+                        guitar_long_notes_at_measure_beat[measure][i] = True
 
     return guitar_long_notes_at_measure_beat
 
@@ -608,13 +609,14 @@ def get_bass_long_notes_at_measure_beat(events):
     bass_long_notes_at_measure_beat = {}
 
     for measure in events:
-        if 0x2b in events[measure]:
-            for i in range(len(events[measure][0x2b])):
-                if events[measure][0x2b][i] != "00":
-                    if measure not in bass_long_notes_at_measure_beat:
-                        bass_long_notes_at_measure_beat[measure] = {}
+        for long_event in [0x2b, 0x2d]:
+            if long_event in events[measure]:
+                for i in range(len(events[measure][long_event])):
+                    if events[measure][long_event][i] != "00":
+                        if measure not in bass_long_notes_at_measure_beat:
+                            bass_long_notes_at_measure_beat[measure] = {}
 
-                    bass_long_notes_at_measure_beat[measure][i] = True
+                        bass_long_notes_at_measure_beat[measure][i] = True
 
     return bass_long_notes_at_measure_beat
 
@@ -1405,7 +1407,7 @@ def parse_dtx_to_intermediate(filename,
                         mapped_sound_id = sound_metadata_map.get(sound_id, 0)
                         default_notes[reverse_dtx_mapping[event]] = mapped_sound_id
 
-                elif event == 0x2a:
+                elif event in [0x2a, 0x2c]:
                     # Guitar long note
                     data = events_by_measure[measure][event]
                     for i in range(len(data)):
@@ -1422,7 +1424,7 @@ def parse_dtx_to_intermediate(filename,
                             bpms_at_measure_beat
                         )
 
-                elif event == 0x2b:
+                elif event in [0x2b, 0x2d]:
                     # Bass long note
                     data = events_by_measure[measure][event]
                     for i in range(len(data)):
@@ -1828,14 +1830,39 @@ def generate_hold_release_events(chart):
         for beat in chart['timestamp'][k]:
             if beat['name'] == "note":
                 if 'guitar_special' in beat['data'] and beat['data']['guitar_special'] & 0x02:
-                    # Long note
+                    # Long note start
+                    new_note = copy.deepcopy(beat)
+                    new_note['name'] = "_note_start"
+
+                    if 'beat' in new_note:
+                        del new_note['beat']
+
+                    chart['timestamp'][k].append(new_note)
+
+                    # Long note end
                     new_note = copy.deepcopy(beat)
                     new_note['name'] = "_note_release"
 
                     if 'beat' in new_note:
                         del new_note['beat']
 
-                    new_timestamp = str(int(k) + int(beat['data']['hold_duration']))
+                    timestamp_offset = 0
+                    while True:
+                        new_timestamp = str(int(k) + int(beat['data']['hold_duration']) - timestamp_offset)
+
+                        if new_timestamp not in chart['timestamp']:
+                            break
+
+                        found_note = False
+                        for beat2 in chart['timestamp'][new_timestamp]:
+                            if beat2['name'] == "note":
+                                timestamp_offset += 1
+                                found_note = True
+                                break
+
+                        if not found_note:
+                            break
+
                     if new_timestamp not in chart['timestamp']:
                         chart['timestamp'][new_timestamp] = []
 
@@ -2273,10 +2300,10 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
 
                     dtx_info[measure][0xc2] = d
 
-                elif cd['name'] == "_note_release":
+                elif cd['name'] in ["_note_start", "_note_release"]:
                     # This is an automatically generated event based on
                     # guitar_special and note_length
-                    longnote_field = [-1, 0x2a, 0x2b, 0x2a][game_type]
+                    longnote_field = [-1, 0x2c, 0x2d, 0x2c][game_type]
 
                     if measure in dtx_info and longnote_field not in dtx_info[measure]:
                         numerator = cd['time_signature']['numerator']
