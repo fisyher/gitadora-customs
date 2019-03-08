@@ -21,6 +21,6 @@ def extract(filename, path=None, progress=False):
     return glob.glob(os.path.join(path, "*")), path
 
 def create(foldername, output_filename, progress=False):
-    IFS(foldername).repack(progress=progress, path=output_filename)
+    IFS(foldername).repack(progress=progress, path=output_filename, use_cache=True)
 
     return output_filename
