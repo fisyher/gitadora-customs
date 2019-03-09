@@ -21,8 +21,15 @@ class JsonFormat:
 
     @staticmethod
     def to_chart(params):
-        #output_filename = os.path.join(params.get('output', ""), "output.json")
-        output_filename = params.get('output', "")
+        num = 1
+        outfileName = "output" + str(num) + ".json"        
+        output_filename = os.path.join(params.get('output', ""), outfileName)
+        while os.path.exists(output_filename):
+            num += 1
+            outfileName = "output" + str(num) + ".json"        
+            output_filename = os.path.join(params.get('output', ""), outfileName)
+
+        #output_filename = params.get('output', "")
 
         with open(output_filename, "w") as f:
             f.write(params.get('input', ""))

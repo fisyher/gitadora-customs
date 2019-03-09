@@ -2474,23 +2474,62 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
 def downscale_beat_division_dtx_chart(input_dtx_info):
     
     output_dtx_info = input_dtx_info
-
+    #Reduce from 1920 divisions to 192 as that is the max supported in dtx
     for measure in sorted(output_dtx_info.keys(), key=lambda x: int(x)):
         for key in sorted(output_dtx_info[measure].keys(), key=lambda x: int(x)):
             if( len(output_dtx_info[measure][key]) >= 10):
                 in_length = len(output_dtx_info[measure][key])
                 out_length = in_length // 10
                 new_array = ['00'] * out_length
+                temp_new_object = []
                 for x in range(0, in_length):
                     if(output_dtx_info[measure][key][x] != '00'):
-                        #Round x to nearest integer after divide by 10
+                        #Round x to nearest integer after divide by 10 
                         num_y = int(round(x/10.0))
+                        
+                        #if num_y happens to be equal to out_length, move the note to the next measure at the zeroth position!
                         if(num_y >= out_length):
-                            num_y = out_length - 1
-                        #Problem: Later values within 5 beat division will overwrite previous values
-                        #but it shouldn't happen because game never have notes so close to one another
-                        new_array[num_y] = output_dtx_info[measure][key][x]
+                            next_measure = measure + 1
+                            if(next_measure < len(output_dtx_info)):
+                                #Check if key exist
+                                if(not key in output_dtx_info[next_measure]):
+                                    #Get any bar length change member from next_measure if any
+                                    next_measure_length = in_length
+                                    if(2 in output_dtx_info[next_measure]):
+                                        next_measure_length = output_dtx_info[next_measure][2] * 1920
+                                    #Create new key for next measure
+                                    output_dtx_info[next_measure][key] = ['00'] * next_measure_length
+                                
+                                output_dtx_info[next_measure][key][0] = output_dtx_info[measure][key][x]
+                                output_dtx_info[measure][key][x] = '00'
+                            else:
+                                print('Warning: note removed at last measure!')
+                        else:                            
+                            #Problem: Later values within 5 beat division will overwrite previous values
+                            #but it shouldn't happen because game never have notes so close to one another
+                            new_array[num_y] = output_dtx_info[measure][key][x]
+                            temp_new_object.append({
+                                'index': num_y,
+                                'value': new_array[num_y]
+                            })
+                #TODO: Further reduce out_length based on HCF or GCD
+                #Find GCD of all index in temp_new_object                
+                gcd = 0
+                len_new_object = len(temp_new_object)
+                for tIndex in range(0, len_new_object):
+                    gcd = math.gcd(gcd, temp_new_object[tIndex]['index'])                    
+                    if(tIndex == len_new_object - 1):
+                        gcd = math.gcd(gcd, out_length)
                 
+                #print('Measure:', measure, ' has GCD of' , gcd)
+                #Replace new_array with the reduced length
+                if(gcd > 0):
+                    new_array = ['00'] * (out_length // gcd)
+                    #Put the chip values back
+                    for tIndex in range(0, len_new_object):
+                        reducedIndex = temp_new_object[tIndex]['index'] // gcd
+                        new_array[reducedIndex] = temp_new_object[tIndex]['value']
+
                 #Overwrite with new reduced array 
                 output_dtx_info[measure][key] = new_array
 
