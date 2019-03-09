@@ -2521,7 +2521,7 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                                     #Get any bar length change member from next_measure if any
                                     next_measure_length = in_length
                                     if(2 in output_dtx_info[next_measure]):
-                                        next_measure_length = output_dtx_info[next_measure][2] * 1920
+                                        next_measure_length = int(float(output_dtx_info[next_measure][2][0]) * 1920)
                                     #Create new key for next measure
                                     output_dtx_info[next_measure][key] = ['00'] * next_measure_length
                                 
