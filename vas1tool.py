@@ -92,7 +92,6 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False, i
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group(required=True)
     parser.add_argument('-i', '--input', help='Input file', required=True)
     parser.add_argument('-o', '--output', help='Output file', required=True)
     parser.add_argument('-m', '--mix', action='store_true', help='Mix output files using volume and pan parameters', required=False, default=False)
