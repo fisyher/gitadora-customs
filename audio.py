@@ -16,9 +16,14 @@ def get_audio_file(filename):
         return None
 
     if filename.lower().endswith('.xa'):
-        filename = get_wav_from_xa(filename)
+        wav_filename = helper.getCaseInsensitivePath(filename.lower().replace('.xa', '.wav'))
 
-    return pydub.AudioSegment.from_file(filename)
+        if not os.path.exists(wav_filename):
+            filename = get_wav_from_xa(filename)
+        else:
+            filename = wav_filename
+
+    return pydub.AudioSegment.from_file(filename, "wav")
 
 def get_duration(filename):
     filename = helper.getCaseInsensitivePath(filename)
@@ -108,7 +113,7 @@ def get_processed_wav(input_filename, output_filename=None, channels=1, bits=16,
         return input_filename
 
     if output_filename == None:
-        output_filename = tmpfile.mkstemp()
+        output_filename = tmpfile.mkstemp(suffix=".wav")
 
     #print("Converted {} to {}".format(input_filename, output_filename))
     output.export(output_filename, format="wav")
