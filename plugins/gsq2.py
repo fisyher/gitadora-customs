@@ -283,20 +283,39 @@ def get_end_timestamp(chart):
     return sorted(chart['timestamp'].keys(), key=lambda x: int(x))[-1]
 
 
+def find_next_measure_event(chart, start_key=None):
+    keys_sorted = sorted(chart['timestamp'].keys(), key=lambda x: int(x))
+
+    for idx, timestamp_key in enumerate(keys_sorted[1:]):
+        if timestamp_key in [0xffff, 0xffffffff]:
+            break
+
+        if start_key and timestamp_key <= start_key:
+            continue
+
+        for beat in chart['timestamp'][timestamp_key]:
+            if beat['name'] in ["measure"]:
+                return timestamp_key
+
+    return None
+
+
 def generate_bpm_events(chart):
     bpms = []
 
-    keys_sorted = sorted(chart['timestamp'].keys(), key=lambda x: int(x))
-    last_bpm = 0
+    last_bpm_timestamp_key = 0
+    last_bpm = None
 
-    for idx, timestamp_key in enumerate(keys_sorted[1:]):
-        if timestamp_key == 0xffffffff:
+    while True:
+        next_bpm_timestamp_key = find_next_measure_event(chart, last_bpm_timestamp_key)
+
+        if not next_bpm_timestamp_key:
             break
 
-        cur_bpm = round(((300 / 4) / ((timestamp_key - keys_sorted[idx]) / 4)) * 240) # I came up with these numbers by plotting the BPM and first measure timestamp and finding the values that resulted in the least error over the entire dataset
+        cur_bpm = 300 / (((next_bpm_timestamp_key - last_bpm_timestamp_key) / 4) / 60)
 
         if cur_bpm != last_bpm:
-            chart['timestamp'][keys_sorted[idx]].append({
+            chart['timestamp'][last_bpm_timestamp_key].append({
                 "data": {
                     "bpm": cur_bpm
                 },
@@ -304,6 +323,9 @@ def generate_bpm_events(chart):
             })
 
             last_bpm = cur_bpm
+
+        last_bpm_timestamp_key = next_bpm_timestamp_key
+
 
     return chart
 
@@ -518,6 +540,8 @@ def generate_json_from_gsq2(params):
     musicid = -1
     if len(raw_charts) > 0:
         musicid = struct.unpack("<H", raw_charts[0][0][0x04:0x06])[0]
+
+    musicid = params.get('musicid', None) or musicid
 
     output_data['musicid'] = musicid
     output_data['format'] = Gsq2Format.get_format_name()
