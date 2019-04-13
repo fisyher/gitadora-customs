@@ -116,7 +116,6 @@ guitar_mapping = {
     "g_rxbyp": 0xd1,
     "g_rgxyp": 0xd2,
     "g_rgbyp": 0xd3,
-    "g_hold" : 0x2c, #Supported by DTXMania AL only
 }
 
 bass_mapping = {
@@ -159,7 +158,6 @@ bass_mapping = {
     "b_rxbyp": 0xe6,
     "b_rgxyp": 0xe7,
     "b_rgbyp": 0xe8,
-    "b_hold" : 0x2d, #Supported by DTXMania AL only
 }
 
 dtx_mapping = {
@@ -202,13 +200,12 @@ drum_range = list(range(0x11, 0x1b + 1))
 guitar_range = list(range(0x20, 0x27 + 1)) + \
     list(range(0x93, 0x9f + 1)) + \
     list(range(0xa9, 0xaf + 1)) + \
-    list(range(0xd0, 0xd3 + 1)) + \
-    list(range(0x2c, 0x2c + 1))
+    list(range(0xd0, 0xd3 + 1))
 
 bass_range = list(range(0xa0, 0xa7 + 1)) + \
     list(range(0xc5, 0xcf + 1)) + \
-    list(range(0xda, 0xe8 + 1)) + \
-    list(range(0x2d, 0x2d + 1))
+    list(range(0xda, 0xe8 + 1))
+
 
 # This is similar to Fraction, except it won't
 # try to reduce the fraction.
@@ -1859,7 +1856,7 @@ def generate_hold_release_events(chart):
                         found_note = False
                         for beat2 in chart['timestamp'][new_timestamp]:
                             if beat2['name'] == "note":
-                                timestamp_offset += 1
+                                timestamp_offset += 30
                                 found_note = True
                                 break
 
@@ -2442,21 +2439,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                         wail_d[beat] = d[beat]
 
                         dtx_info[measure][wail_field] = wail_d
-                    #Hold note support
-                    if 'guitar_special' in cd['data'] and cd['data']['guitar_special'] & 0x02:
-                        hold_field = [-1, 0x2c, 0x2d, 0x2c][game_type]
 
-                        if measure in dtx_info and hold_field not in dtx_info[measure]:
-                            numerator = cd['time_signature']['numerator']
-                            denominator = cd['time_signature']['denominator']
-                            timesig = numerator / denominator
-                            beat_division = int(1920 * timesig)
-                            dtx_info[measure][hold_field] = ['00'] * beat_division
-
-                        hold_d = dtx_info[measure][hold_field]
-                        hold_d[beat] = d[beat]
-
-                        dtx_info[measure][hold_field] = hold_d
                     # Bonus note support
                     if cd['data'].get('bonus_note') and cd['data']['note'] in dtx_bonus_mapping:
                         bonus_note_lane = 0x4f
@@ -2574,6 +2557,9 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
 
     dtx_info = downscale_beat_division_dtx_chart(dtx_info)
 
+    #Hardcode movie sub-folder path here
+    movie_sub_folder = "../movies/"
+
     output = []
     if 'title' in orig_chart_data['header']:
         output.append("#TITLE %s" % orig_chart_data['header']['title'])
@@ -2606,8 +2592,12 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
             output.append("#PREVIEW i%04dgf.wav" % orig_chart_data['header']['musicid'])
 
     output.append("#PREIMAGE img_jk%04d.png" % orig_chart_data['header']['musicid'])
-    output.append("#AVIZZ mv%04d.avi" % orig_chart_data['header']['musicid'])
 
+    if 'movie_filename' in orig_chart_data['header']:
+        output.append("#AVIZZ %s" % (movie_sub_folder + orig_chart_data['header']['movie_filename']))
+    else:
+        output.append("#AVIZZ mv%04d.avi" % orig_chart_data['header']['musicid'])
+    
     output.append("#BPM %s" % (bpms[0]))
     for i in range(0, len(bpms)):
         output.append("#BPM%s %s" % (base_repr(i+1, 36, padding=2).upper()[-2:], bpms[i]))
@@ -2738,6 +2728,7 @@ def create_set_definition_file(json_dtx, params, charts_data):
     output_set_filename = os.path.join(output_folder, "set.def")
 
     song_title = None
+    label_array = ['BASIC','ADVANCED','EXTREME','MASTER']
     output_set_data = {}
     for x in charts_data:
         output_filename = get_dtx_filename(json_dtx, x)
@@ -2754,9 +2745,12 @@ def create_set_definition_file(json_dtx, params, charts_data):
     with open(output_set_filename, "a", encoding="shift-jis") as outfile:
         for part in output_set_data:
             if song_title:
-                outfile.write("#TITLE: {} ({})\n".format(song_title, part))
+                #outfile.write("#TITLE: {} ({})\n".format(song_title, part))
+                outfile.write("#TITLE: {}\n".format(song_title))
 
             for difficulty in sorted(output_set_data[part].keys(), key=lambda x: int(x)):
+                outfile.write("#L{}LABEL: {}\n".format(difficulty,
+                                                      label_array[difficulty - 1]))
                 outfile.write("#L{}FILE: {}\n".format(difficulty,
                                                       output_set_data[part][difficulty]))
             outfile.write("\n")

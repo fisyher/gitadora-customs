@@ -1349,6 +1349,10 @@ def add_song_info(charts, music_id, music_db):
 
         if 'bpm2' in song_info:
             charts[chart_idx]['header']['bpm2'] = song_info['bpm2']
+        
+        #New: Add movie_filename
+        if 'movie_filename' in song_info:
+            charts[chart_idx]['header']['movie_filename'] = song_info['movie_filename']
 
     return charts
 
