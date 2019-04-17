@@ -56,11 +56,12 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False, i
         # sound_flag seems to be related to defaults. If something is set to default, it is 0x02. Else it's 0x04 (for GDXG). Always 0 for GDXH?
         # entry_unk4 seems to always be 255??
         metadata_offset, offset, filesize = struct.unpack("<III", data[entry_start+(i*0x0c):entry_start+(i*0x0c)+0x0c])
-        metadata_unk1_1, volume, metadata_unk1_3, sound_id, sound_id2, metadata_unk2_2, metadata_unk2_3, metadata_unk2_4, metadata_unk3 = struct.unpack("<BBBBBBBBI", data[entry_start+metadata_offset+(entry_count*0x0c):entry_start+metadata_offset+(entry_count*0x0c)+0x0c])
+        metadata_unk1_1, volume, metadata_unk1_3, sound_id, sound_id2, metadata_unk2_2, metadata_unk2_3, metadata_unk2_4, metadata_unk3, sample_rate = struct.unpack("<BBBBBBBBHH", data[entry_start+metadata_offset+(entry_count*0x0c):entry_start+metadata_offset+(entry_count*0x0c)+0x0c])
+        sample_rate *= 2
 
         #output_filename = os.path.join(basepath, "{}.wav".format(entry['filename']))
 
-        print("%04x | %08x %08x %08x | %02x %02x %02x %02x  %02x %02x %02x %02x  %08x | %08x" % (i, metadata_offset, offset, filesize, metadata_unk1_1, volume, metadata_unk1_3, sound_id, sound_id2, metadata_unk2_2, metadata_unk2_3, metadata_unk2_4, metadata_unk3, entry_start+metadata_offset+(entry_count*0x0c)))
+        print("%04x | %08x %08x %08x | %02x %02x %02x %02x  %02x %02x %02x %02x  %04x  %04x | %08x" % (i, metadata_offset, offset, filesize, metadata_unk1_1, volume, metadata_unk1_3, sound_id, sound_id2, metadata_unk2_2, metadata_unk2_3, metadata_unk2_4, sample_rate, metadata_unk3, entry_start+metadata_offset+(entry_count*0x0c)))
 
         offset += ((entry_count * 0x0c) * 2) + 4
 
@@ -84,15 +85,17 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False, i
 
         print("Extracting", output_filename)
         with open(output_filename, "wb") as outfile:
-            outfile.write(struct.pack(">IHHB", filesize, 0, 22050 if is_guitar else 44100, 1))
+            outfile.write(struct.pack(">IHHB", filesize, 0, sample_rate if is_guitar else 44100, 1))
             outfile.write(bytearray([0] * 7))
             outfile.write(bytearray([0] * 0x800))
             outfile.write(data[entry:entry+filesize])
 
+        audio.get_wav_from_pcm(output_filename)
+        os.remove(output_filename)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group(required=True)
     parser.add_argument('-i', '--input', help='Input file', required=True)
     parser.add_argument('-o', '--output', help='Output file', required=True)
     parser.add_argument('-m', '--mix', action='store_true', help='Mix output files using volume and pan parameters', required=False, default=False)

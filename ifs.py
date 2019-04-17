@@ -16,13 +16,15 @@ def extract(filename, path=None, progress=False):
     if not path:
         path = tmpfile.mkdtemp(prefix="ifs")
 
-    IFS(filename).extract(progress=progress, path=path)
+    ifs = IFS(filename)
+    ifs.extract(progress=progress, path=path)
 
     # Get file list
     return glob.glob(os.path.join(path, "*")), path
 
 def create(foldername, output_filename, progress=False):
-    IFS(foldername).repack(progress=progress, path=output_filename, use_cache=True)
+    ifs = IFS(foldername)
+    ifs.repack(progress=progress, path=output_filename, use_cache=True)
 
 
 if __name__ == "__main__":

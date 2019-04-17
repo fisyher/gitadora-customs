@@ -16,9 +16,14 @@ def get_audio_file(filename):
         return None
 
     if filename.lower().endswith('.xa'):
-        filename = get_wav_from_xa(filename)
+        wav_filename = helper.getCaseInsensitivePath(filename.lower().replace('.xa', '.wav'))
 
-    return pydub.AudioSegment.from_file(filename)
+        if not os.path.exists(wav_filename):
+            filename = get_wav_from_xa(filename)
+        else:
+            filename = wav_filename
+
+    return pydub.AudioSegment.from_file(filename, "wav")
 
 def get_duration(filename):
     filename = helper.getCaseInsensitivePath(filename)
@@ -82,6 +87,20 @@ def get_wav_from_xa(input_filename):
 
     return temp_filename
 
+def get_wav_from_pcm(input_filename):
+    input_filename = helper.getCaseInsensitivePath(input_filename)
+
+    prefix = ""
+    if os.name != "nt":
+        prefix = "wine"
+
+    wav_filename = os.path.splitext(input_filename)[0] + ".wav"
+
+    cmd = "{} vgmstream_cli.exe -q -o \"{}\" \"{}\"".format(prefix, wav_filename.replace("/","\\"), input_filename.replace("/","\\"))
+    subprocess.call(cmd, shell=True)
+
+    return wav_filename
+
 def get_processed_wav(input_filename, output_filename=None, channels=1, bits=16, rate=48000):
     input_filename = helper.getCaseInsensitivePath(input_filename)
 
@@ -108,7 +127,7 @@ def get_processed_wav(input_filename, output_filename=None, channels=1, bits=16,
         return input_filename
 
     if output_filename == None:
-        output_filename = tmpfile.mkstemp()
+        output_filename = tmpfile.mkstemp(suffix=".wav")
 
     #print("Converted {} to {}".format(input_filename, output_filename))
     output.export(output_filename, format="wav")
