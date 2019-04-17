@@ -1846,18 +1846,24 @@ def generate_hold_release_events(chart):
                     if 'beat' in new_note:
                         del new_note['beat']
 
-                    timestamp_offset = 0
+                    #DD1 has a hold note that seems to end on bar without note but actual game still has it end earlier
+                    timestamp_offset = 30 #0.1 sec
                     while True:
-                        new_timestamp = str(int(k) + int(beat['data']['hold_duration']) - timestamp_offset)
+                        new_timestamp_int = int(k) + int(beat['data']['hold_duration']) - timestamp_offset
+                        new_timestamp = str(new_timestamp_int)
 
-                        if new_timestamp not in chart['timestamp']:
-                            break
+                        #if new_timestamp not in chart['timestamp']:
+                        #    break
 
                         found_note = False
-                        for beat2 in chart['timestamp'][new_timestamp]:
-                            if beat2['name'] == "note":
-                                timestamp_offset += 30
-                                found_note = True
+                        for delta in range(-7, 8):
+                            if str(new_timestamp_int + delta) in chart['timestamp']:                           
+                                for beat2 in chart['timestamp'][str(new_timestamp_int + delta)]:
+                                    if beat2['name'] == "note":
+                                        timestamp_offset += 30
+                                        found_note = True                                
+                                        break
+                            if found_note:
                                 break
 
                         if not found_note:
@@ -2184,6 +2190,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                     chart_data[measure][beat][idx]['data']['volume'] = 127
 
                 pan = 64  # Center
+                volume = 127  # 100% volume
                 if sound_metadata and 'entries' in sound_metadata:
                     for sound_entry in sound_metadata['entries']:
                         if sound_entry['sound_id'] == cd['data']['sound_id']:
@@ -2206,7 +2213,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
 
                 chart_data[measure][beat][idx]['data']['pan'] = pan_final
 
-                volume = 127  # 100% volume
+                #volume = 127  # 100% volume
                 volume_final = 100
                 if cd['data'].get('volume') != 127:
                     volume_final = int(round((cd['data']['volume'] / 127) * (volume / 127) * 100))
