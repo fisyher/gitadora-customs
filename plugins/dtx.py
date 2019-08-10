@@ -1847,6 +1847,7 @@ def generate_hold_release_events(chart):
                         del new_note['beat']
 
                     #DD1 has a hold note that seems to end on bar without note but actual game still has it end earlier
+                    #Hyp also has hold note ending earlier than expected.
                     timestamp_offset = 30 #0.1 sec
                     while True:
                         new_timestamp_int = int(k) + int(beat['data']['hold_duration']) - timestamp_offset
@@ -2291,21 +2292,25 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                         dtx_info[measure][0xc2] = ['00'] * beat_division
 
                     d = dtx_info[measure][0xc2]
-                    d[beat] = base_repr(0x02, 36, padding=2).upper()[-2:]
+                    d[beat + 10] = base_repr(0x02, 36, padding=2).upper()[-2:] #baroff should be right after barline, not on barline itself
 
                     dtx_info[measure][0xc2] = d
 
                 elif cd['name'] == "endpos":
-                    if measure in dtx_info and 0xc2 not in dtx_info[measure]:
+                    if measure in dtx_info and 0x61 not in dtx_info[measure]:
                         numerator = cd['time_signature']['numerator']
                         denominator = cd['time_signature']['denominator']
                         beat_division = int((1920 / denominator) * numerator)
-                        dtx_info[measure][0xc2] = ['00'] * beat_division
+                        dtx_info[measure][0x61] = ['00'] * beat_division
 
-                    d = dtx_info[measure][0xc2]
-                    #d[beat] = base_repr(0x03, 36, padding=2).upper()[-2:]
+                    d = dtx_info[measure][0x61]
+                    #For some songs, beat is 1920 which is off index
+                    if beat in d:
+                        d[beat] = base_repr(1294, 36, padding=2).upper()[-2:] #1294 is ZY, which we assume no chip sound, or we can reserve it as empty
+                    else:
+                        pass #avoid putting endpos for this case for now since only 8 songs affected. Manually place the endpos if it effects ending
 
-                    dtx_info[measure][0xc2] = d
+                    dtx_info[measure][0x61] = d
 
                 elif cd['name'] in ["_note_start", "_note_release"]:
                     # This is an automatically generated event based on
