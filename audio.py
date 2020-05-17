@@ -9,7 +9,6 @@ import helper
 
 helper.check_ffmpeg()
 
-
 def get_audio_file(filename):
     filename = helper.getCaseInsensitivePath(filename)
     if not filename or not os.path.exists(filename):
