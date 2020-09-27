@@ -15,6 +15,7 @@ import vas3tool
 import ifs
 import eamxml
 import event
+import mdb
 
 import plugins
 
@@ -111,7 +112,35 @@ def process_file(params):
     if output_format.lower() != 'wav' and 'output' in params and not os.path.exists(params['output']):
         os.makedirs(params['output'])
 
+    # Add music information from database
+    if params.get('musicdb', None) and params.get('musicid', None):
+        mdb_info = mdb.get_song_info_from_mdb(params['musicdb'], params['musicid'])
+
+        if mdb_info:
+            json_data = json.loads(json_data)
+
+            for chart in json_data['charts']:
+                if chart['header']['is_metadata']:
+                    continue
+
+                chart['header']['title'] = mdb_info['title']
+                chart['header']['artist'] = mdb_info['artist']
+                chart['header']['bpm'] = mdb_info['bpm']
+
+                k = {
+                    0: "drum",
+                    1: "guitar",
+                    2: "bass",
+                    3: "open",
+                }[chart['header']['game_type']]
+                chart['header']['level'] = {
+                    k: mdb_info['difficulty'][chart['header']['game_type'] * 5 + chart['header']['difficulty']]
+                }
+
+            json_data = json.dumps(json_data)
+
     params['input'] = json_data
+
     output_handler.to_chart(params)
 
 

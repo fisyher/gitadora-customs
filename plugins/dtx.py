@@ -2662,7 +2662,8 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
     else:
         output.append("#AVIZZ mv%04d.avi" % orig_chart_data['header']['musicid'])
 
-    output.append("#BPM %s" % (bpms[0]))
+    default_bpm = orig_chart_data['header'].get('bpm', bpms[0])
+    output.append("#BPM %s" % (default_bpm))
     for i in range(0, len(bpms)):
         output.append("#BPM%s %s" % (base_repr(i+1, 36, padding=2).upper()[-2:], bpms[i]))
 
@@ -2702,8 +2703,19 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
             # Default to one without bass or guitar
             bgm_filename_part = "d__k"
 
-        bgm_filename = "bgm%04d%s.wav" % (orig_chart_data['header']['musicid'],
-                                          bgm_filename_part)
+        bgm_filenames = [
+            "bgm%04d%s_xg.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part),
+            "bgm%04d%s.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part),
+        ]
+
+        sound_folder = params.get('sound_folder', None)
+        if sound_folder:
+            for bgm_filename in bgm_filenames:
+                if os.path.exists(os.path.join(sound_folder, bgm_filename)):
+                    break
+
+        else:
+            bgm_filename = bgm_filenames[-1]
 
     output.append("#WAVZZ %s" % bgm_filename)
 
