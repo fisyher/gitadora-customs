@@ -1,48 +1,51 @@
 import json
 import struct
 
-from plugins.gsq import EVENT_ID_MAP, NOTE_MAPPING, generate_json_from_data
+from plugins.gsq import generate_json_from_data
+from plugins.dsq import NOTE_MAPPING
+
+EVENT_ID_MAP = {
+    0x00: "note",
+    0x01: "note",
+    0x02: "note",
+    0x03: "note",
+    0x04: "note",
+    0x05: "note",
+    0x06: "measure",
+    0x07: "beat",
+
+    0x0c: "endpos",
+}
 
 
-def read_gsq1_data(data, events, other_params):
+def read_dsq05_data(data, events, other_params):
     def parse_event_block(mdata, game):
         packet_data = {}
 
-        timestamp, param1, param2, cmd = struct.unpack("<HHHH", mdata[0:8])
-        param3 = cmd & 0xff0f
-        cmd &= 0x00f0
+        timestamp, cmd, param1, param2, visibility = struct.unpack("<IBBBB", mdata[0:8])
 
-        if timestamp == 0xffff:
-            return None
+        if cmd not in EVENT_ID_MAP:
+            event_name = "unk"
 
         else:
-            timestamp *= 4
+            event_name = EVENT_ID_MAP[cmd]
 
-        event_name = EVENT_ID_MAP[cmd]
+        if event_name == "note" and visibility != 0 and visibility not in [1, 2, 4]:
+            import hexdump
+            hexdump.hexdump(mdata)
+            exit(1)
 
-        if cmd in [0x00, 0x20, 0x40, 0x60]:
-            packet_data['sound_id'] = param1
-            packet_data['volume'] = 127
+        if event_name == "note":
+            packet_data['sound_id'] = param2
+            packet_data['volume'] = param1
+            packet_data['note'] = NOTE_MAPPING[game][cmd]
 
-            if param3 & 0x0f == 0:
-                # Special case from Lucky? Staff in GF1. Never seen this in any other game.
-                packet_data['note'] = NOTE_MAPPING[game][0x02] # note
-
-            else:
-                packet_data['note'] = NOTE_MAPPING[game][param3 & 0x0f] # note
+            if visibility != 0:
+                packet_data['note'] = "auto"
 
             if packet_data['note'] == "auto":
                 packet_data['auto_volume'] = 1
                 packet_data['auto_note'] = 1
-
-            is_wail = (cmd & 0x20) != 0
-            packet_data['wail_misc'] = 1 if is_wail else 0
-            packet_data['guitar_special'] = 1 if is_wail else 0
-            packet_data['is_hidden'] = 1 if (cmd & 0x40) != 0 else 0
-
-        elif cmd not in [0x10, 0xa0]:
-            print("Unknown command %04x %02x" % (timestamp, cmd))
-            exit(1)
 
         return {
             "name": event_name,
@@ -51,7 +54,7 @@ def read_gsq1_data(data, events, other_params):
             "data": packet_data
         }
 
-    part = [None, "guitar", "bass", "open", "guitar", "guitar"][other_params['game_type']]
+    part = ["drum", None, None, None, None, None][other_params['game_type']]
 
     if not part:
         return None
@@ -73,7 +76,7 @@ def read_gsq1_data(data, events, other_params):
     }
 
     header_size = 0
-    entry_size = 0x08
+    entry_size = 0x10
     entry_count = len(data) // entry_size
 
     for i in range(entry_count):
@@ -86,15 +89,15 @@ def read_gsq1_data(data, events, other_params):
     return output
 
 
-class Gsq1Format:
+class Dsq05Format:
     @staticmethod
     def get_format_name():
-        return "Gsq1"
+        return "Dsq05"
 
     @staticmethod
     def to_json(params):
-        output_data = generate_json_from_data(params, read_gsq1_data)
-        output_data['format'] = Gsq1Format.get_format_name()
+        output_data = generate_json_from_data(params, read_dsq05_data)
+        output_data['format'] = Dsq05Format.get_format_name()
         return json.dumps(output_data, indent=4, sort_keys=True)
 
     @staticmethod
@@ -107,4 +110,4 @@ class Gsq1Format:
 
 
 def get_class():
-    return Gsq1Format
+    return Dsq05Format

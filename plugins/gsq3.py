@@ -4,19 +4,16 @@ import struct
 from plugins.gsq import EVENT_ID_MAP, NOTE_MAPPING, generate_json_from_data
 
 
-def read_gsq1_data(data, events, other_params):
+def read_gsq3_data(data, events, other_params):
     def parse_event_block(mdata, game):
         packet_data = {}
 
-        timestamp, param1, param2, cmd = struct.unpack("<HHHH", mdata[0:8])
+        timestamp, param2, param1, cmd = struct.unpack("<IIHH", mdata[0:12])
         param3 = cmd & 0xff0f
-        cmd &= 0x00f0
+        cmd &= 0xf0
 
-        if timestamp == 0xffff:
+        if timestamp == 0xffffffff:
             return None
-
-        else:
-            timestamp *= 4
 
         event_name = EVENT_ID_MAP[cmd]
 
@@ -24,10 +21,9 @@ def read_gsq1_data(data, events, other_params):
             packet_data['sound_id'] = param1
             packet_data['volume'] = 127
 
-            if param3 & 0x0f == 0:
-                # Special case from Lucky? Staff in GF1. Never seen this in any other game.
-                packet_data['note'] = NOTE_MAPPING[game][0x02] # note
-
+            if (cmd & 0x40) != 0:
+                packet_data['note'] = NOTE_MAPPING[game][0x10] # open note
+                packet_data['auto_unk'] = param3
             else:
                 packet_data['note'] = NOTE_MAPPING[game][param3 & 0x0f] # note
 
@@ -38,11 +34,6 @@ def read_gsq1_data(data, events, other_params):
             is_wail = (cmd & 0x20) != 0
             packet_data['wail_misc'] = 1 if is_wail else 0
             packet_data['guitar_special'] = 1 if is_wail else 0
-            packet_data['is_hidden'] = 1 if (cmd & 0x40) != 0 else 0
-
-        elif cmd not in [0x10, 0xa0]:
-            print("Unknown command %04x %02x" % (timestamp, cmd))
-            exit(1)
 
         return {
             "name": event_name,
@@ -50,6 +41,10 @@ def read_gsq1_data(data, events, other_params):
             'timestamp_ms': timestamp / 300,
             "data": packet_data
         }
+
+
+    if data[0x00:0x04].decode('ascii') == "GSQ1":
+        data = data[0x10:]
 
     part = [None, "guitar", "bass", "open", "guitar", "guitar"][other_params['game_type']]
 
@@ -73,7 +68,7 @@ def read_gsq1_data(data, events, other_params):
     }
 
     header_size = 0
-    entry_size = 0x08
+    entry_size = 12
     entry_count = len(data) // entry_size
 
     for i in range(entry_count):
@@ -86,15 +81,15 @@ def read_gsq1_data(data, events, other_params):
     return output
 
 
-class Gsq1Format:
+class Gsq3Format:
     @staticmethod
     def get_format_name():
-        return "Gsq1"
+        return "Gsq3"
 
     @staticmethod
     def to_json(params):
-        output_data = generate_json_from_data(params, read_gsq1_data)
-        output_data['format'] = Gsq1Format.get_format_name()
+        output_data = generate_json_from_data(params, read_gsq3_data)
+        output_data['format'] = Gsq3Format.get_format_name()
         return json.dumps(output_data, indent=4, sort_keys=True)
 
     @staticmethod
@@ -103,8 +98,15 @@ class Gsq1Format:
 
     @staticmethod
     def is_format(filename):
+        header = open(filename, "rb").read(0x04)
+
+        try:
+            return header[0x00:0x04].decode('ascii') == "GSQ1"
+        except:
+            return False
+
         return False
 
 
 def get_class():
-    return Gsq1Format
+    return Gsq3Format
