@@ -343,7 +343,7 @@ if __name__ == "__main__":
             # Extract va3 files
             if 'sound' in file_set and not args.no_sounds:
                 print("Parsing %s..." % file_set['sound'])
-                vas3tool.read_vas3(file_set['sound'], sound_folder)
+                vas3tool.read_vas3(file_set['sound'], sound_folder, force_game=("drum" if file_set['sound'][-5] == 'd' else "guitar"))
 
             params = {
                 "input": file_set['seq'],
@@ -404,7 +404,6 @@ if __name__ == "__main__":
             }
 
             process_file(params)
-
 
             if args.input_ifs_seq and args.copy_raw_files:
                 if os.path.isdir(args.input_ifs_seq):

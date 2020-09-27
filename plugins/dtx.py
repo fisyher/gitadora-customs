@@ -2628,6 +2628,10 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
     else:
         output.append("#ARTIST (no artist)")
 
+    if 'difficulty' in orig_chart_data['header']:
+        label_array = ['BASIC','ADVANCED','EXTREME','MASTER']
+        output.append("#COMMENT {}".format(label_array[orig_chart_data['header']['difficulty'] - 1]))
+
     if 'level' in orig_chart_data['header']:
         for k in orig_chart_data['header']['level']:
             level_map = {
@@ -2661,7 +2665,7 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
         output.append("#BPM%s %s" % (base_repr(i+1, 36, padding=2).upper()[-2:], bpms[i]))
 
     for k in sorted(sound_files.keys()):
-        wav_filename = "%04x.wav" % sound_files[k]
+        wav_filename = "%c_%04x.wav" % ('d' if game_type == 0 else 'g', sound_files[k])
 
         if sound_metadata and 'entries' in sound_metadata:
             for sound_entry in sound_metadata['entries']:
@@ -2672,7 +2676,7 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
                     wav_filename = "%s.wav" % sound_entry['filename']
 
                 if sound_entry.get('clipped', False):
-                    wav_filename = "_override_clipped_%d_%04x_%s" % (sound_entry['sound_id'], sound_entry['orig_sound_id'], wav_filename)
+                    wav_filename = "_override_clipped_%d_%04x_%04x.wav" % (sound_entry['sound_id'], sound_entry['orig_sound_id'], sound_entry['sound_id'])
 
                 break
 
@@ -2691,7 +2695,8 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
             "k"
         ])
 
-        if bgm_filename_part == "__bk":
+        bgm_filename_part2 = bgm_filename_part
+        if bgm_filename_part in ["__bk", "dg_k"]:
             # A BGM file with just the bass doesn't exist
             # Default to one without bass or guitar
             bgm_filename_part = "d__k"
@@ -2699,6 +2704,8 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
         bgm_filenames = [
             "bgm%04d%s_xg.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part),
             "bgm%04d%s.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part),
+            "bgm%04d%s_xg.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part2),
+            "bgm%04d%s.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part2),
         ]
 
         sound_folder = params.get('sound_folder', None)
