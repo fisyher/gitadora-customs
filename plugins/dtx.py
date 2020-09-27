@@ -2708,10 +2708,12 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
     output.append("#WAVZZ %s" % bgm_filename)
 
     for k in sorted(volumes.keys()):
-        output.append("#VOLUME%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], volumes[k]))
+        if volumes[k] != 100:
+            output.append("#VOLUME%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], volumes[k]))
 
     for k in sorted(pans.keys()):
-        output.append("#PAN%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], pans[k]))
+        if pans[k] != 0:
+            output.append("#PAN%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], pans[k]))
 
     output.append("#00001: ZZ")
     output.append("#00054: ZZ")
