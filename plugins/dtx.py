@@ -2175,6 +2175,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
 
     last_sound_was_mutable = False
     last_played_note = None
+    last_auto_note = 0
 
     # TODO: Refactor this more eventually if possible
     for measure in sorted(chart_data.keys(), key=lambda x: int(x)):
@@ -2406,18 +2407,10 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
 
                     # Fix mapped note for autoplay sounds
                     if mapped_note in auto_play_ranges:
-                        while measure in dtx_info and mapped_note in dtx_info[measure]:
-                            d = dtx_info[measure][mapped_note]
-
-                            if d[beat] != "00" and mapped_note in auto_play_ranges:
-                                if auto_play_ranges.index(mapped_note) + 1 >= len(auto_play_ranges):
-                                    print("Ran out of auto play spaces")
-                                    exit(1)
-
-                                idx = auto_play_ranges.index(mapped_note)
-                                mapped_note = auto_play_ranges[idx + 1]
-                            else:
-                                break
+                        # Move through all auto play channels before looping back to the beginning of the range
+                        # This is to fix a bug where a new auto play clip is played, muting the previous
+                        mapped_note = auto_play_ranges[last_auto_note % len(auto_play_ranges)]
+                        last_auto_note += 1
 
                     if measure in dtx_info and mapped_note not in dtx_info[measure]:
                         numerator = cd['time_signature']['numerator']
