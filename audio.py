@@ -38,8 +38,6 @@ def clip_audio(input_filename, output_filename, duration, loop_duration=0.370):
     filename = helper.getCaseInsensitivePath(input_filename)
     sound_file = get_audio_file(filename)
 
-    print(filename)
-
     while duration * 1000 > len(sound_file):
         if len(sound_file) < loop_duration * 1000:
             tail_loop = sound_file[::]
