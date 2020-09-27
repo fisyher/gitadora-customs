@@ -11,9 +11,7 @@ import audio
 import wavbintool
 import helper
 
-import imageio
-imageio.plugins.ffmpeg.download()
-
+import imageio_ffmpeg
 
 def percentage_to_db(percentage):
     if percentage == 0:

@@ -1,8 +1,6 @@
-import pykakasi
-import imageio
+import imageio_ffmpeg
 import os
 import shutil
-
 
 def getCaseInsensitivePath(path):
     """
@@ -50,11 +48,11 @@ def getCaseInsensitivePath(path):
     else:
         return path # cant find the right one, just return the path as is.
 
-
 def romanize(text):
     if all(ord(c) < 128 for c in text):
         return text
 
+    import pykakasi
     kakasi = pykakasi.kakasi()
     kakasi.setMode("H","a")
     kakasi.setMode("K","a")
@@ -64,24 +62,10 @@ def romanize(text):
     new_text = conv.do(text)
     return new_text.upper() if text != new_text else text
 
-
-
 def check_ffmpeg():
-    try:
-        if not os.path.exists("ffmpeg.exe"):
-            exe_path = imageio.plugins.ffmpeg.get_exe()
-            ext = os.path.splitext(exe_path)[-1]
-            filename = "ffmpeg" + ext
+    if not os.path.exists("ffmpeg.exe"):
+        exe_path = imageio_ffmpeg.get_ffmpeg_exe()
+        ext = os.path.splitext(exe_path)[-1]
+        filename = "ffmpeg" + ext
 
-            shutil.copy(exe_path, filename)
-
-    except:
-        imageio.plugins.ffmpeg.download(directory=".")
-
-        for platform in imageio.plugins.ffmpeg.FNAME_PER_PLATFORM:
-            filename = imageio.plugins.ffmpeg.FNAME_PER_PLATFORM[platform]
-            path = os.path.join("ffmpeg", filename)
-            ext = os.path.splitext(filename)[-1]
-
-            if os.path.exists(path):
-                shutil.copy(path, "ffmpeg" + ext)
+        shutil.copy(exe_path, filename)
