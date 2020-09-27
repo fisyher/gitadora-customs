@@ -185,8 +185,9 @@ def generate_json_from_data(params, read_data_callback, raw_charts):
 
         charts[chart_idx] = combine_metadata_with_chart(metadata_chart, chart)
 
-    if metadata_chart:
-        charts.remove(metadata_chart)
+    # Metadata chart is still required for old DTX plugin, so don't remove it (yet)
+    # if metadata_chart:
+    #     charts.remove(metadata_chart)
 
     charts, guitar_charts, bass_charts, open_charts, guitar1_charts, guitar2_charts = split_charts_by_parts(charts)
 

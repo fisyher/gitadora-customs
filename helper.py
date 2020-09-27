@@ -8,6 +8,10 @@ def is_wsl():
     return "microsoft" in platform.uname()[3].lower()
 
 
+def get_windows_path(input):
+    return '\\'.join(os.path.normpath(input).split(os.sep))
+
+
 def getCaseInsensitivePath(path):
     """
     Source: http://code.activestate.com/recipes/576571-case-insensitive-filename-on-nix-systems-return-th/

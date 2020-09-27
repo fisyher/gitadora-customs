@@ -1858,11 +1858,11 @@ def generate_hold_release_events(chart):
 
                         found_note = False
                         for delta in range(-7, 8):
-                            if str(new_timestamp_int + delta) in chart['timestamp']:                           
+                            if str(new_timestamp_int + delta) in chart['timestamp']:
                                 for beat2 in chart['timestamp'][str(new_timestamp_int + delta)]:
                                     if beat2['name'] == "note":
                                         timestamp_offset += 30
-                                        found_note = True                                
+                                        found_note = True
                                         break
                             if found_note:
                                 break
@@ -2492,7 +2492,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
     return dtx_info, bpms, sound_files, volumes, pans
 
 def downscale_beat_division_dtx_chart(input_dtx_info):
-    
+
     output_dtx_info = input_dtx_info
     #Reduce from 1920 divisions to 192 as that is the max supported in dtx
     for measure in sorted(output_dtx_info.keys(), key=lambda x: int(x)):
@@ -2504,9 +2504,9 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                 temp_new_object = []
                 for x in range(0, in_length):
                     if(output_dtx_info[measure][key][x] != '00'):
-                        #Round x to nearest integer after divide by 10 
+                        #Round x to nearest integer after divide by 10
                         num_y = int(round(x/10.0))
-                        
+
                         #if num_y happens to be equal to out_length, move the note to the next measure at the zeroth position!
                         if(num_y >= out_length):
                             next_measure = measure + 1
@@ -2519,12 +2519,12 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                                         next_measure_length = int(float(output_dtx_info[next_measure][2][0]) * 1920)
                                     #Create new key for next measure
                                     output_dtx_info[next_measure][key] = ['00'] * next_measure_length
-                                
+
                                 output_dtx_info[next_measure][key][0] = output_dtx_info[measure][key][x]
                                 output_dtx_info[measure][key][x] = '00'
                             else:
                                 print('Warning: note removed at last measure!')
-                        else:                            
+                        else:
                             #Problem: Later values within 5 beat division will overwrite previous values
                             #but it shouldn't happen because game never have notes so close to one another
                             new_array[num_y] = output_dtx_info[measure][key][x]
@@ -2533,14 +2533,14 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                                 'value': new_array[num_y]
                             })
                 #TODO: Further reduce out_length based on HCF or GCD
-                #Find GCD of all index in temp_new_object                
+                #Find GCD of all index in temp_new_object
                 gcd = 0
                 len_new_object = len(temp_new_object)
                 for tIndex in range(0, len_new_object):
-                    gcd = math.gcd(gcd, temp_new_object[tIndex]['index'])                    
+                    gcd = math.gcd(gcd, temp_new_object[tIndex]['index'])
                     if(tIndex == len_new_object - 1):
                         gcd = math.gcd(gcd, out_length)
-                
+
                 #print('Measure:', measure, ' has GCD of' , gcd)
                 #Replace new_array with the reduced length
                 if(gcd > 0):
@@ -2550,12 +2550,35 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                         reducedIndex = temp_new_object[tIndex]['index'] // gcd
                         new_array[reducedIndex] = temp_new_object[tIndex]['value']
 
-                #Overwrite with new reduced array 
+                #Overwrite with new reduced array
                 output_dtx_info[measure][key] = new_array
 
     return output_dtx_info
 
 def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, params):
+    for chart in [metadata, orig_chart_data]:
+        is_metadata = chart['header']['is_metadata']
+
+        if 'timestamp' not in chart:
+            # Old DTX plugin requires a timestamp field for charts, so give it what it wants
+            chart['timestamp'] = {}
+            for event in chart['beat_data']:
+                if event['timestamp'] not in chart['timestamp']:
+                    chart['timestamp'][event['timestamp']] = []
+
+                timestamp = event['timestamp']
+
+                del event['timestamp']
+                del event['timestamp_ms']
+
+                if not is_metadata and event['name'] in ['baron', 'baroff', 'measure', 'beat', 'unk0c', 'bpm', 'barinfo']:
+                    # If these are in the non-metadata chart then it messes up the parser with duplicate commands, so make sure they are not in the charts at this point (will be re-added later though...)
+                    continue
+
+                chart['timestamp'][timestamp].append(event)
+
+            del chart['beat_data']
+
     game_type = orig_chart_data['header']['game_type']
 
     chart_data = generate_metadata_fields(metadata, orig_chart_data, params.get('dtx_fake_timesigs', False))
@@ -2609,7 +2632,7 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
         output.append("#AVIZZ %s" % (movie_sub_folder + orig_chart_data['header']['movie_filename']))
     else:
         output.append("#AVIZZ mv%04d.avi" % orig_chart_data['header']['musicid'])
-    
+
     output.append("#BPM %s" % (bpms[0]))
     for i in range(0, len(bpms)):
         output.append("#BPM%s %s" % (base_repr(i+1, 36, padding=2).upper()[-2:], bpms[i]))
@@ -2684,7 +2707,7 @@ def get_charts_data(charts, sound_metadata, params):
 
     return [{
         'chart': x,
-        'data': generate_dtx_chart_from_json(copy.deepcopy(chart_metadata), x, sound_metadata, params)
+        'data': generate_dtx_chart_from_json(copy.deepcopy(chart_metadata), copy.deepcopy(x), sound_metadata, params)
     } for x in charts if x['header']['is_metadata'] == 0]
 
 
