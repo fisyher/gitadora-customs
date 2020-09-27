@@ -55,7 +55,6 @@ def get_song_info_from_csv(input_filename, music_id):
     if not os.path.exists(input_filename):
         return None
 
-    #csv_file = open(input_filename, 'r', encoding="utf-8")
     reader = csv.DictReader(open(input_filename, 'r', encoding="shift-jis"))
 
     song_info_ver = 0
@@ -66,7 +65,10 @@ def get_song_info_from_csv(input_filename, music_id):
                 song_info_ver = int(data['game_version'])
 
                 song_info = {
-                    'music_id': music_id
+                    'music_id': music_id,
+                    'game_version': song_info_ver,
+                    'gf_version': int(data['first_version_gf']),
+                    'dm_version': int(data['first_version_dm']),
                 }
 
                 song_info['title'] = data['title_name']

@@ -76,10 +76,12 @@ def get_wav_from_xa(input_filename):
     input_filename = helper.getCaseInsensitivePath(input_filename)
 
     prefix = ""
-    if os.name != "nt":
-        prefix = "wine"
+    if helper.is_wsl():
+        prefix = "./"
+    elif os.name != "nt":
+        prefix = "wine "
 
-    cmd = "{} xa.exe -d \"{}\"".format(prefix, input_filename.replace("/","\\"))
+    cmd = "{}xa.exe -d \"{}\"".format(prefix, input_filename.replace("/","\\"))
     subprocess.call(cmd, shell=True)
 
     temp_filename = os.path.splitext(input_filename)[0] + ".wav"
@@ -91,12 +93,14 @@ def get_wav_from_pcm(input_filename):
     input_filename = helper.getCaseInsensitivePath(input_filename)
 
     prefix = ""
-    if os.name != "nt":
-        prefix = "wine"
+    if helper.is_wsl():
+        prefix = "./"
+    elif os.name != "nt":
+        prefix = "wine "
 
     wav_filename = os.path.splitext(input_filename)[0] + ".wav"
 
-    cmd = "{} vgmstream_cli.exe -q -o \"{}\" \"{}\"".format(prefix, wav_filename.replace("/","\\"), input_filename.replace("/","\\"))
+    cmd = "{}vgmstream_cli.exe -q -o \"{}\" \"{}\"".format(prefix, wav_filename.replace("/","\\"), input_filename.replace("/","\\"))
     subprocess.call(cmd, shell=True)
 
     return wav_filename

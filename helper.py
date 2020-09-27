@@ -1,7 +1,11 @@
-import pykakasi
-import imageio
+import platform
 import os
 import shutil
+
+import imageio
+
+def is_wsl():
+    return "microsoft" in platform.uname()[3].lower()
 
 
 def getCaseInsensitivePath(path):
@@ -55,6 +59,7 @@ def romanize(text):
     if all(ord(c) < 128 for c in text):
         return text
 
+    import pykakasi
     kakasi = pykakasi.kakasi()
     kakasi.setMode("H","a")
     kakasi.setMode("K","a")
