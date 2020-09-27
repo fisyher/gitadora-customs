@@ -47,15 +47,18 @@ VOLUME_TABLE = [ 0, 14, 21, 28,  33,  37,  41,  44,
                 98, 98, 98, 98,  99,  99,  99,  99,
                 99, 99, 99, 99, 100, 100, 100, 100 ]
 
-def write_vas3(input_foldername, output_filename, metadata=None):
+def write_vas3(input_foldername, output_filename, force_game="drum", metadata=None):
     if not input_foldername:
         input_foldername = ""
 
     if not output_filename:
         output_filename = ""
 
+    if force_game:
+        filename_prefix = force_game[0]
+
     if not metadata:
-        metadata = json.load(open(os.path.join(input_foldername, "metadata.json"), "r"))
+        metadata = json.load(open(os.path.join(input_foldername, "%s_metadata.json" % filename_prefix), "r"))
 
     with open(output_filename, "wb") as outfile:
         version = 2
@@ -111,7 +114,7 @@ def write_vas3(input_foldername, output_filename, metadata=None):
             filename = entry['filename']
 
             if "NoFilename" in entry['flags']:
-                filename = "%04x" % entry['sound_id']
+                filename = "%s_%04x" % (filename_prefix, entry['sound_id'])
 
             if not os.path.exists(os.path.join(input_foldername, filename)):
                 # Lame way to check if it has an extension
@@ -209,7 +212,7 @@ def write_vas3(input_foldername, output_filename, metadata=None):
         outfile.write(data_section)
 
 
-def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
+def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False, force_game=None):
     data = open(input_filename, "rb").read()
 
     if data[0:4].decode('ascii') != "VA3W":
@@ -230,18 +233,23 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
 
     default_hihat, default_snare, default_bass, default_hightom, default_lowtom, default_rightcymbal = struct.unpack("<HHHHHH", data[gdx_start+0x04:gdx_start+0x10])
     if gdx_magic == "GDXH":
-        # Not used anywhere, can be ignored??
-        # gdx_type_unk1 default is 0
-        # gdx_type_unk2 default is 1
         default_leftcymbal = 0xfff0
         default_floortom = 0xfff1
         default_leftpedal = 0xfff2
         gdx_type_unk1 = data[gdx_start+0x10] # Not used anywhere?
         gdx_volume_flag = data[gdx_start+0x11] # How does this work with GDXG?
+
+        filename_prefix = "g"
+
     elif gdx_magic == "GDXG":
         default_leftcymbal, default_floortom, default_leftpedal = struct.unpack("<HHH", data[gdx_start+0x10:gdx_start+0x16])
         gdx_type_unk1 = 0
         gdx_volume_flag = 1
+
+        filename_prefix = "d"
+
+    if force_game:
+        filename_prefix = force_game[0]
 
     metadata = {
         'type': gdx_magic,
@@ -263,58 +271,29 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
     }
 
     entries = []
+    prev_filesize = 0
     for i in range(entry_count):
         # sound_flag seems to be related to defaults. If something is set to default, it is 0x02. Else it's 0x04 (for GDXG). Always 0 for GDXH?
         # entry_unk4 seems to always be 255??
         offset, filesize, channels, bits, rate, entry_unk1, entry_unk2, volume, pan, sound_id, sound_flag, entry_unk4  = struct.unpack("<IIHHIIIBBHHH", data[entry_start+(i*0x40):entry_start+(i*0x40)+0x20])
         filename = data[entry_start+(i*0x40)+0x20:entry_start+(i*0x40)+0x40].decode("ascii").strip('\0')
 
-        if entry_unk1 != 0:
+        if filename_prefix == "g":
+            if i + 1 == entry_count:
+                filesize = len(data) - (data_start + offset)
+
+            else:
+                filesize = int.from_bytes(data[entry_start+((i+1)*0x40):entry_start+((i+1)*0x40)+4], 'little')
+                t = prev_filesize
+                prev_filesize = filesize
+                filesize -= t
+
+        elif entry_unk1 != 0:
             filesize = entry_unk1
 
-        # if entry_unk1 != 0 or entry_unk2 != 0:
-        #     print("Unknown fields in entry: %08x %08x" % (entry_unk1, entry_unk2))
-        #     exit(1)
 
-        # Code for an older version of VA3 files?
-        # I think there's some padding that it's trying to deal with here, but I'm not sure exactly.
-        # Need a sample to verify this functionality.
-        # entry_unk1 and entry_unk2 should always be 0 for v3
-        # if entry_unk2 != 0 and (entry_unk2 == filesize or entry_unk2 == filesize + 0x20 or entry_unk2 == filesize * 4):
-        #     entry_unk2 = 0
 
-        # if version_flag4 == 0:
-        #     if entry_unk2 > 0 and entry_unk2 >= 0x20:
-        #         entry_unk2 -= 0x20
-        #     if entry_unk1 > 0 and entry_unk1 >= 0x20:
-        #         entry_unk1 -= 0x20
-
-        # if entry_unk2 > filesize:
-        #     entry_unk2 = filesize
-
-        # if entry_unk1 != 0:
-        #     valid_file = entry_unk1 == entry_unk2
-        # else:
-        #     valid_file = entry_unk2 == 0
-
-        if gdx_volume_flag == 0:
-             # ??
-             # This code shouldn't be hit unless you're working
-             # with some really old files I suspect
-            volume = 3 * volume / 2
-            print("Verify volume when gdx_volume_flag == 0")
-            exit(1)
-        else:
-            volume = min(volume, 127)
-
-        if version_flag1 == 1 and version_flag2 == 0 and version_flag3 == 0 and (version_flag4 == 0 or version_flag4 == 1):
-            # v1 and v2 use a table for volume?
-            # Need to find a sample to verify
-            #volume2 = VOLUME_TABLE[min(volume, 0x7f)]
-            #print(volume, volume2)
-            #print("Verify when volume table is used (percentages or not?)")
-            #exit(1)
-            pass
+        volume = min(volume, 127)
 
         if sound_id >= 0xfff0:
             print("Verify when sound_id >= 0xfff0")
@@ -352,10 +331,6 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
             if (sound_flag & 0x02) != 0:
                 metadata['entries'][-1]['flags'].append(0x02)
 
-        # if (sound_flag & 0x04) != 0:
-        #     metadata['entries'][-1]['flags'].append("DefaultSound") # Generate this by checking defaults in header
-                #"DefaultSound" if (sound_flag & 0x04) != 0,
-
         if (sound_flag & 0x0100) != 0:
             metadata['entries'][-1]['flags'].append("NoFilename")
 
@@ -364,20 +339,20 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
     else:
         basepath = os.path.splitext(os.path.basename(input_filename))[0]
 
-    if not os.path.exists(basepath):
-        os.makedirs(basepath)
+    os.makedirs(basepath, exist_ok=True)
 
     for entry in entries:
-        #print("Extracting", entry['filename'])
-        #print(entry)
+        # print("Extracting", entry['filename'])
+
+        print(entry)
 
         wave_data = bytearray(data[data_start+entry['offset']:data_start+entry['offset']+entry['filesize']])
         output = adpcmwave.decode_data(wave_data, entry['rate'], entry['channels'], entry['bits'])
 
-        output_filename = os.path.join(basepath, "{}.wav".format(entry['filename']))
+        output_filename = os.path.join(basepath, "{}_{}.wav".format(filename_prefix, entry['filename']))
 
         if (sound_flag & 0x100) != 0 or force_hex:
-            output_filename = os.path.join(basepath, "%04x.wav" % entry['sound_id'])
+            output_filename = os.path.join(basepath, "%s_%04x.wav" % (filename_prefix, entry['sound_id']))
 
         output = numpy.ndarray((int(len(output) // 2 // entry['channels']), entry['channels']), numpy.int16, output, 0)
 
@@ -411,7 +386,7 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False):
                 metadata['entries'][idx]['duration'] = entry['duration']
                 break
 
-    open(os.path.join(basepath, "metadata.json"), "w").write(json.dumps(metadata, indent=4))
+    open(os.path.join(basepath, "%s_metadata.json" % filename_prefix), "w").write(json.dumps(metadata, indent=4))
 
 
 if __name__ == "__main__":
@@ -423,9 +398,11 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--output', help='Output file', required=True)
     parser.add_argument('-m', '--mix', action='store_true', help='Mix output files using volume and pan parameters', required=False, default=False)
     parser.add_argument('-f', '--force-hex', action='store_true', help='Force hex filenames', required=False, default=False)
+    parser.add_argument('-g', '--force-game', help='Force game type', required=True, default=None, choices=['drum', 'guitar'])
     args = parser.parse_args()
 
     if args.create:
-        write_vas3(args.input, args.output)
+        write_vas3(args.input, args.output, args.force_game)
+
     elif args.extract:
-        read_vas3(args.input, args.output, args.force_hex, args.mix)
+        read_vas3(args.input, args.output, args.force_hex, args.mix, args.force_game)
