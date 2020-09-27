@@ -119,13 +119,18 @@ def get_sound_metadata(sound_folder):
     if not sound_folder:
         return None
 
-    sound_metadata_filename = os.path.join(sound_folder, "metadata.json")
+    sound_metadata = {}
+    sound_metadata_filename_guitar = os.path.join(sound_folder, "g_metadata.json")
+    if os.path.exists(sound_metadata_filename_guitar):
+        with open(sound_metadata_filename_guitar, "r") as f:
+            sound_metadata['guitar'] = json.loads(f.read())
 
-    if os.path.exists(sound_metadata_filename):
-        with open(sound_metadata_filename, "r") as f:
-            return json.loads(f.read())
+    sound_metadata_filename_drum = os.path.join(sound_folder, "d_metadata.json")
+    if os.path.exists(sound_metadata_filename_drum):
+        with open(sound_metadata_filename_drum, "r") as f:
+            sound_metadata['drum'] = json.loads(f.read())
 
-    return None
+    return sound_metadata if sound_metadata else None
 
 
 if __name__ == "__main__":

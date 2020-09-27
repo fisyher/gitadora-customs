@@ -34,9 +34,22 @@ def get_duration(filename):
 
     return len(sound_file) / 1000
 
-def clip_audio(input_filename, output_filename, duration):
+def clip_audio(input_filename, output_filename, duration, loop_duration=0.370):
     filename = helper.getCaseInsensitivePath(input_filename)
-    sound_file = get_audio_file(filename)[:duration * 1000]
+    sound_file = get_audio_file(filename)
+
+    print(filename)
+
+    while duration * 1000 > len(sound_file):
+        if len(sound_file) < loop_duration * 1000:
+            tail_loop = sound_file[::]
+
+        else:
+            tail_loop = sound_file[-loop_duration * 1000:]
+
+        sound_file += tail_loop
+
+    sound_file = sound_file[:duration * 1000]
     sound_file.export(output_filename, format="wav")
     print("Generated", output_filename, len(sound_file) / 1000, duration)
 

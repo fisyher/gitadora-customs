@@ -291,8 +291,6 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False, f
         elif entry_unk1 != 0:
             filesize = entry_unk1
 
-
-
         volume = min(volume, 127)
 
         if sound_id >= 0xfff0:
@@ -347,6 +345,7 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False, f
         print(entry)
 
         wave_data = bytearray(data[data_start+entry['offset']:data_start+entry['offset']+entry['filesize']])
+
         output = adpcmwave.decode_data(wave_data, entry['rate'], entry['channels'], entry['bits'])
 
         output_filename = os.path.join(basepath, "{}_{}.wav".format(filename_prefix, entry['filename']))
@@ -377,13 +376,17 @@ def read_vas3(input_filename, output_folder, force_hex=False, mix_audio=False, f
             entry['volume'] = 127
             entry['pan'] = 64
 
-        entry['duration'] = len(pydub.AudioSegment.from_file(output_filename)) / 1000
+        entry['duration'] = (entry['filesize'] * (entry['bits'] // 8) * entry['channels']) / entry['rate']
 
         for idx in range(len(metadata['entries'])):
             if metadata['entries'][idx]['sound_id'] == entry['sound_id']:
                 metadata['entries'][idx]['volume'] = entry['volume']
                 metadata['entries'][idx]['pan'] = entry['pan']
                 metadata['entries'][idx]['duration'] = entry['duration']
+                metadata['entries'][idx]['rate'] = entry['rate']
+                metadata['entries'][idx]['channels'] = entry['channels']
+                metadata['entries'][idx]['bits'] = entry['bits']
+                metadata['entries'][idx]['raw_filesize'] = entry['filesize']
                 break
 
     open(os.path.join(basepath, "%s_metadata.json" % filename_prefix), "w").write(json.dumps(metadata, indent=4))

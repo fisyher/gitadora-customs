@@ -188,7 +188,7 @@ def read_vas1(input_filename, input_fre_filename, output_folder, force_hex=False
 
         print("Extracting %s | %d %04x %d" % (output_filename, sound_id, volume, pan))
         with open(output_filename, "wb") as outfile:
-            outfile.write(struct.pack(">IHHB", filesize, 0, sample_rate, 1))
+            outfile.write(struct.pack(">IHHB", filesize, 0, c, 1))
             outfile.write(bytearray([0] * 7))
             outfile.write(bytearray([0] * 0x800))
             outfile.write(data[entry:entry+filesize])
@@ -208,6 +208,10 @@ def read_vas1(input_filename, input_fre_filename, output_folder, force_hex=False
             'extra': 255, # Unknown
             'flags': ['NoFilename'],
             'duration': duration,
+            'rate': sample_rate,
+            'channels': 1,
+            'bits': 8, # TODO: ??? Verify
+            'raw_filesize': filesize,
         })
 
     open(os.path.join(basepath, "%s_metadata.json" % filename_prefix), "w").write(json.dumps(metadata, indent=4))
