@@ -114,7 +114,21 @@ def process_file(params):
 
     # Add music information from database
     if params.get('musicdb', None) and params.get('musicid', None):
+        try:
+            csv_info = mdb.get_song_info_from_csv("gitadora_music.csv", params['musicid'])
+
+        except:
+            csv_info = None
+
         mdb_info = mdb.get_song_info_from_mdb(params['musicdb'], params['musicid'])
+
+        if csv_info:
+            # Pull properly named Japanese artist and title fields from csv if it exists
+            mdb_info['title'] = csv_info['title']
+            mdb_info['artist'] = csv_info['artist']
+
+            if 'movie_filename' in csv_info:
+                mdb_info['movie_filename'] = csv_info['movie_filename']
 
         if mdb_info:
             json_data = json.loads(json_data)
@@ -123,19 +137,19 @@ def process_file(params):
                 if chart['header']['is_metadata']:
                     continue
 
-                chart['header']['title'] = mdb_info['title']
-                chart['header']['artist'] = mdb_info['artist']
-                chart['header']['bpm'] = mdb_info['bpm']
-
                 k = {
                     0: "drum",
                     1: "guitar",
                     2: "bass",
                     3: "open",
                 }[chart['header']['game_type']]
-                chart['header']['level'] = {
-                    k: mdb_info['difficulty'][chart['header']['game_type'] * 5 + chart['header']['difficulty']]
-                }
+
+                level = mdb_info['difficulty'][chart['header']['game_type'] * 5 + chart['header']['difficulty']]
+
+                chart['header']['title'] = mdb_info['title']
+                chart['header']['artist'] = mdb_info['artist']
+                chart['header']['bpm'] = mdb_info['bpm']
+                chart['header']['level'] = { k: level }
 
             json_data = json.dumps(json_data)
 
