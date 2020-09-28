@@ -11,8 +11,7 @@ import helper
 import mdb
 import tmpfile
 
-import imageio
-imageio.plugins.ffmpeg.download()
+import imageio_ffmpeg
 
 VOLUME_OVERHEAD_PERCENT = 75
 

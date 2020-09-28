@@ -4,8 +4,8 @@ semidbm==0.5.1
 numpy
 lxml
 git+https://github.com/miurahr/pykakasi
-ifstools==1.4
-imageio==2.3.0
-kbinxml==1.4
-pydub==0.21.0
+ifstools
+imageio_ffmpeg==0.4.2
+kbinxml
+pydub==0.24.0
 Pillow

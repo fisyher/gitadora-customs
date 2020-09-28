@@ -16,9 +16,7 @@ import helper
 
 import adpcmwave
 
-import imageio
-imageio.plugins.ffmpeg.download()
-
+import imageio_ffmpeg
 
 GDX_SIZES = {
     'GDXH': 0x14,
