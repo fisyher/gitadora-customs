@@ -50,7 +50,7 @@ def clip_audio(input_filename, output_filename, duration, loop_duration=0.370):
         else:
             tail_loop = sound_file[-loop_duration * 1000:]
 
-        sound_file += tail_loop
+        sound_file = sound_file.append(tail_loop, crossfade=100 if len(tail_loop) > 100 else len(tail_loop) - 1)
 
     sound_file = sound_file[:duration * 1000]
     sound_file.export(output_filename, format="wav")
