@@ -2825,6 +2825,7 @@ def create_set_definition_file(json_dtx, params, charts_data):
     song_title = None
     label_array = ['BASIC','ADVANCED','EXTREME','MASTER']
     output_set_data = {}
+    output_set_data_title = {}
     for x in charts_data:
         output_filename = get_dtx_filename(json_dtx, x)
 
@@ -2837,11 +2838,20 @@ def create_set_definition_file(json_dtx, params, charts_data):
         if 'title' in x['chart']['header']:
             song_title = x['chart']['header']['title']
 
+        part_str = game_type
+        if 'level' in x['chart']['header']:
+            has_drum = "drum" in x['chart']['header']['level']
+            has_guitar = "guitar" in x['chart']['header']['level']
+            has_bass = "bass" in x['chart']['header']['level']
+            part_str = "/".join(list(filter(None, ["Drum" if has_drum else None, "Guitar" if has_guitar else None, "Bass" if has_bass else None])))
+
+        output_set_data_title[game_type] = "{} ({})".format(song_title, part_str)
+
     with open(output_set_filename, "a", encoding="shift-jis") as outfile:
         for part in output_set_data:
             if song_title:
-                #outfile.write("#TITLE: {} ({})\n".format(song_title, part))
-                outfile.write("#TITLE: {}\n".format(song_title))
+                outfile.write("#TITLE: {}\n".format(output_set_data_title[part]))
+                # outfile.write("#TITLE: {}\n".format(song_title))
 
             for difficulty in sorted(output_set_data[part].keys(), key=lambda x: int(x)):
                 outfile.write("#L{}LABEL: {}\n".format(difficulty,
