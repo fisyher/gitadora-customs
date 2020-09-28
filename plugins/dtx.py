@@ -1482,6 +1482,7 @@ def parse_dtx_to_intermediate(filename,
 
                         if event in guitar_range:
                             wail_event = 0x28
+
                         elif event in bass_range:
                             wail_event = 0xa8
 
@@ -1806,6 +1807,16 @@ def create_json_from_dtx(params):
 #########################
 #   DTX creation code   #
 #########################
+
+def get_note_type(note):
+    if note.startswith('g_'):
+        return 1
+
+    elif note.startswith('b_'):
+        return 2
+
+    return 0
+
 
 def combine_charts(metadata, chart):
     chart_combined = copy.deepcopy(chart)
@@ -2317,7 +2328,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                 elif cd['name'] in ["_note_start", "_note_release"]:
                     # This is an automatically generated event based on
                     # guitar_special and note_length
-                    longnote_field = [-1, 0x2c, 0x2d, 0x2c][game_type]
+                    longnote_field = [-1, 0x2c, 0x2d, 0x2c][get_note_type(cd['data']['note'])]
 
                     if measure in dtx_info and longnote_field not in dtx_info[measure]:
                         numerator = cd['time_signature']['numerator']
@@ -2451,10 +2462,10 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                             # Down wail
                             # Currently down wailing isn't supported by any simulator,
                             # so just use up wail's commands for now
-                            wail_field = [-1, 0x28, 0xa8, 0x28][game_type]
+                            wail_field = [-1, 0x28, 0xa8, 0x28][get_note_type(cd['data']['note'])]
                         else:  # 0, 1, ?
                             # Up wail
-                            wail_field = [-1, 0x28, 0xa8, 0x28][game_type]
+                            wail_field = [-1, 0x28, 0xa8, 0x28][get_note_type(cd['data']['note'])]
 
                         if measure in dtx_info and wail_field not in dtx_info[measure]:
                             numerator = cd['time_signature']['numerator']
