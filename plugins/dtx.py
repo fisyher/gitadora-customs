@@ -2695,27 +2695,37 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
             "k"
         ])
 
-        bgm_filename_part2 = bgm_filename_part
-        if bgm_filename_part in ["__bk", "dg_k"]:
-            # A BGM file with just the bass doesn't exist
-            # Default to one without bass or guitar
-            bgm_filename_part = "d__k"
+        def get_bgm_filename(musicid, part):
+            bgm_filenames = [
+                "bgm%04d%s_xg.wav" % (musicid, part),
+                "bgm%04d%s.wav" % (musicid, part),
+            ]
 
-        bgm_filenames = [
-            "bgm%04d%s_xg.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part),
-            "bgm%04d%s.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part),
-            "bgm%04d%s_xg.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part2),
-            "bgm%04d%s.wav" % (orig_chart_data['header']['musicid'], bgm_filename_part2),
-        ]
+            sound_folder = params.get('sound_folder', None)
+            if sound_folder:
+                for bgm_filename in bgm_filenames:
+                    if os.path.exists(os.path.join(sound_folder, bgm_filename)):
+                        return bgm_filename
 
-        sound_folder = params.get('sound_folder', None)
-        if sound_folder:
-            for bgm_filename in bgm_filenames:
-                if os.path.exists(os.path.join(sound_folder, bgm_filename)):
-                    break
+            return None
+
+        bgm_filename = get_bgm_filename(orig_chart_data['header']['musicid'], bgm_filename_part)
+        if not bgm_filename and bgm_filename_part == "dg_k":
+            base_bgm_filename = get_bgm_filename(orig_chart_data['header']['musicid'], "d__k")
+
+            if not base_bgm_filename:
+                print("Couldn't find base BGM")
+                bgm_filename = "bgm.wav"
+
+            else:
+                base_bgm = audio.get_audio_file(os.path.join(sound_metadata['sound_folder'], base_bgm_filename))
+                guitar_track, _ = audio.get_isolated_bgm(sound_metadata['sound_folder'], "guitar")
+                bass_bgm = base_bgm.overlay(guitar_track)
+                bgm_filename = "bgm_bass.wav"
+                bass_bgm.export(os.path.join(sound_metadata['sound_folder'], bgm_filename), format="wav")
 
         else:
-            bgm_filename = bgm_filenames[-1]
+            bgm_filename = "bgm.wav"
 
     output.append("#WAVZZ %s" % bgm_filename)
 
