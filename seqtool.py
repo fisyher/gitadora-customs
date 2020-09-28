@@ -152,7 +152,10 @@ def process_file(params):
                         3: "open",
                     }[x]
 
-                    chart['header']['level'][k] = mdb_info['difficulty'][chart['header']['game_type'] * 5 + chart['header']['difficulty']]
+                    diff = mdb_info['difficulty'][x * 5 + chart['header']['difficulty']]
+
+                    if diff > 0:
+                        chart['header']['level'][k] = diff
 
                 chart['header']['title'] = mdb_info['title']
                 chart['header']['artist'] = mdb_info['artist']
