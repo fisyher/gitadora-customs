@@ -2664,6 +2664,11 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
     for i in range(0, len(bpms)):
         output.append("#BPM%s %s" % (base_repr(i+1, 36, padding=2).upper()[-2:], bpms[i]))
 
+    if len(sound_files.keys()) > 1295 - 1:
+        # - 1 because of WAVZZ being reserved for BGM
+        print("ERROR: Not enough room to store all keysounds! Found %d keysounds but can only hold %d" % (len(sound_files.keys()), 1295 - 1))
+        exit(1)
+
     for k in sorted(sound_files.keys()):
         wav_filename = "%c_%04x.wav" % ('d' if game_type == 0 else 'g', sound_files[k])
 
@@ -2710,8 +2715,13 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
             return None
 
         bgm_filename = get_bgm_filename(orig_chart_data['header']['musicid'], bgm_filename_part)
-        if not bgm_filename and bgm_filename_part == "dg_k":
-            base_bgm_filename = get_bgm_filename(orig_chart_data['header']['musicid'], "d__k")
+        print(bgm_filename_part, bgm_filename)
+        if not bgm_filename:
+            bgm_filename = "bgm.wav"
+
+            base_bgm_filename = None
+            if bgm_filename_part == "dg_k":
+                base_bgm_filename = get_bgm_filename(orig_chart_data['header']['musicid'], "d__k")
 
             if not base_bgm_filename:
                 print("Couldn't find base BGM")
@@ -2723,9 +2733,6 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
                 bass_bgm = base_bgm.overlay(guitar_track)
                 bgm_filename = "bgm_bass.wav"
                 bass_bgm.export(os.path.join(sound_metadata['sound_folder'], bgm_filename), format="wav")
-
-        else:
-            bgm_filename = "bgm.wav"
 
     output.append("#WAVZZ %s" % bgm_filename)
 

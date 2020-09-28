@@ -137,19 +137,26 @@ def process_file(params):
                 if chart['header']['is_metadata']:
                     continue
 
-                k = {
-                    0: "drum",
-                    1: "guitar",
-                    2: "bass",
-                    3: "open",
-                }[chart['header']['game_type']]
+                chart['header']['level'] = {}
 
-                level = mdb_info['difficulty'][chart['header']['game_type'] * 5 + chart['header']['difficulty']]
+                diffs = [chart['header']['game_type']]
+
+                if chart['header']['game_type'] == 1 and params.get('merge_guitars', False):
+                    diffs.append(2)
+
+                for x in diffs:
+                    k = {
+                        0: "drum",
+                        1: "guitar",
+                        2: "bass",
+                        3: "open",
+                    }[x]
+
+                    chart['header']['level'][k] = mdb_info['difficulty'][chart['header']['game_type'] * 5 + chart['header']['difficulty']]
 
                 chart['header']['title'] = mdb_info['title']
                 chart['header']['artist'] = mdb_info['artist']
                 chart['header']['bpm'] = mdb_info['bpm']
-                chart['header']['level'] = { k: level }
 
             json_data = json.dumps(json_data)
 

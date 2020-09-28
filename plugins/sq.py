@@ -27,26 +27,25 @@ def generate_json_from_data(params, read_data_callback, raw_charts):
                 if chart['header']['difficulty'] != chart2['header']['difficulty']:
                     continue
 
-                if 'level' in chart2['header']:
-                    if 'level' not in chart['header']:
-                        chart['header']['level'] = {}
+                if 'level' not in chart['header']:
+                    chart['header']['level'] = {}
 
-                    for k in chart2['header']['level']:
-                        chart['header']['level'][k] = chart2['header']['level'][k]
+                for k in chart2['header'].get('level', {}):
+                    chart['header']['level'][k] = chart2['header']['level'][k]
 
-                    for event in chart2['timestamp'][timestamp_key]:
-                        if event['name'] != "note":
-                            continue
+                for event in chart2['beat_data']:
+                    if event['name'] != "note":
+                        continue
 
-                        if timestamp_key not in chart['timestamp']:
-                            chart['timestamp'][timestamp_key] = []
-
-                        chart['timestamp'][timestamp_key].append(event)
+                    chart['beat_data'].append(event)
 
                 parsed_bass_charts.append(chart2)
 
         for chart in parsed_bass_charts:
             bass_charts.remove(chart)
+
+        for chart in guitar_charts:
+            chart['beat_data'] = sorted(chart['beat_data'], key=lambda x:x['timestamp'])
 
         return guitar_charts, bass_charts
 
