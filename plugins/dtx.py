@@ -2847,7 +2847,7 @@ def create_set_definition_file(json_dtx, params, charts_data):
 
         output_set_data_title[game_type] = "{} ({})".format(song_title, part_str)
 
-    with open(output_set_filename, "a", encoding="shift-jis") as outfile:
+    with open(output_set_filename, "w", encoding="shift-jis") as outfile:
         for part in output_set_data:
             if song_title:
                 outfile.write("#TITLE: {}\n".format(output_set_data_title[part]))
