@@ -237,6 +237,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.output_format.lower() == "dtx" and os.path.exists(os.path.join(args.output, "set.def")):
+        # Crappy hack but I don't want to solve this properly
+        os.unlink(os.path.join(args.output, "set.def"))
+
     # Clean parts and difficulty
     if 'all' in args.parts:
         args.parts = ['drum', 'guitar', 'bass', 'open']
