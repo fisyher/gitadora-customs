@@ -221,7 +221,10 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--input', help='Input file', required=True)
     parser.add_argument('-o', '--output', help='Output file', required=True)
     parser.add_argument('-n', '--no-convert', help='Do NOT convert all audio to OGG', default=False, action='store_true')
-    parser.add_argument('-r', '--resources', help='Folder containing additional resources to copy (optional)', default=None)
+    parser.add_argument('-r', '--resources', help='Folder containing additional resources to copy (optional)', default="resources")
     args = parser.parse_args()
+
+    if not os.path.exists(args.resources):
+        args.resources = None
 
     process_folder(args.input, args.output, args.no_convert, args.resources)
