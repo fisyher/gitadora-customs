@@ -29,6 +29,7 @@ args = parser.parse_args()
 if os.path.isfile(args.input):
     filenames_bgm, ifs_path = ifs.extract(args.input)
     tmpfile.add_temp_folder(ifs_path)
+    args.input = ifs_path
 
 else:
     filenames_bgm = glob.glob(args.input + "/bgm*.bin") + glob.glob(args.input + "/bgm*.wav")
