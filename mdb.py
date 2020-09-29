@@ -84,7 +84,9 @@ def get_song_info_from_csv(input_filename, music_id):
                         #Add movie filename
                         song_info['movie_filename'] = data.get('movie_filename', None)
 
+            return song_info
+
         except UnicodeDecodeError:
             continue
 
-    return song_info
+    return None
