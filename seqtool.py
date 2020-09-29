@@ -115,7 +115,7 @@ def process_file(params):
     # Add music information from database
     if params.get('musicdb', None) and params.get('musicid', None):
         try:
-            csv_info = mdb.get_song_info_from_csv("gitadora_music.csv", params['musicid'])
+            csv_info = mdb.get_song_info_from_csv(params.get('musicdb_csv', "gitadora_music.csv"), params['musicid'])
 
         except:
             csv_info = None
@@ -217,7 +217,8 @@ if __name__ == "__main__":
     parser.add_argument('--copy-raw-files', action='store_true', help="Copy the raw files without processing", default=False)
     parser.add_argument('--generate-bgms', action='store_true', help="Generate BGMs for various combination of instruments as needed (SQ2/SQ3)", default=False)
 
-    parser.add_argument('--music-db', help="Music database file to read metadata about song")
+    parser.add_argument('--music-db', help="Music database file (XML) to read metadata about song")
+    parser.add_argument('--music-db-csv', help="Music database file (CSV) to read metadata about song", default="gitadora_music.csv")
     parser.add_argument('--music-id', type=int, help="Force a music ID", default=None)
 
     parser.add_argument('--render-auto-name', action='store_true', help="Automatically name output file")
@@ -372,6 +373,7 @@ if __name__ == "__main__":
                 "merge_guitars": args.merge_guitars,
                 "events": file_set['events'] if 'events' in file_set else {},
                 "musicdb": args.music_db,
+                "musicdb_csv": args.music_db_csv,
                 "musicid": args.music_id,
                 "input_split": {
                     "drum": {
@@ -460,6 +462,7 @@ if __name__ == "__main__":
             "merge_guitars": args.merge_guitars,
             "events": event.get_bonus_notes_by_timestamp(eamxml.get_raw_xml(open(args.event_file, "rb").read())) if args.event_file else {},
             "musicdb": args.music_db,
+            "musicdb_csv": args.music_db_csv,
             "musicid": args.music_id,
             "input_split": {
                 "drum": {

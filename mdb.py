@@ -75,13 +75,8 @@ def get_song_info_from_csv(input_filename, music_id):
 
                         song_info['title'] = data['title_name']
                         song_info['artist'] = data['artist_title']
-                        song_info['difficulty'] = [data[k] for k in ["diff_dm_easy","diff_dm_bsc","diff_dm_adv","diff_dm_ext","diff_dm_mst","diff_gf_easy","diff_gf_bsc","diff_gf_adv","diff_gf_ext","diff_gf_mst","diff_gf_b_easy","diff_gf_b_bsc","diff_gf_b_adv","diff_gf_b_ext","diff_gf_b_mst"]]
 
-                        #Also add bpm and bpm2
-                        song_info['bpm'] = data.get('bpm', 0)
-                        song_info['bpm2'] = data.get('bpm2', 0)
-
-                        #Add movie filename
+                        # Allow a movie filename override
                         song_info['movie_filename'] = data.get('movie_filename', None)
 
             return song_info
