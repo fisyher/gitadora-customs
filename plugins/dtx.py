@@ -1482,6 +1482,7 @@ def parse_dtx_to_intermediate(filename,
 
                         if event in guitar_range:
                             wail_event = 0x28
+
                         elif event in bass_range:
                             wail_event = 0xa8
 
@@ -1807,6 +1808,16 @@ def create_json_from_dtx(params):
 #   DTX creation code   #
 #########################
 
+def get_note_type(note):
+    if note.startswith('g_'):
+        return 1
+
+    elif note.startswith('b_'):
+        return 2
+
+    return 0
+
+
 def combine_charts(metadata, chart):
     chart_combined = copy.deepcopy(chart)
 
@@ -1858,11 +1869,11 @@ def generate_hold_release_events(chart):
 
                         found_note = False
                         for delta in range(-7, 8):
-                            if str(new_timestamp_int + delta) in chart['timestamp']:                           
+                            if str(new_timestamp_int + delta) in chart['timestamp']:
                                 for beat2 in chart['timestamp'][str(new_timestamp_int + delta)]:
                                     if beat2['name'] == "note":
                                         timestamp_offset += 30
-                                        found_note = True                                
+                                        found_note = True
                                         break
                             if found_note:
                                 break
@@ -2114,7 +2125,7 @@ def generate_measure_beat_for_chart(chart_data):
     return chart_data
 
 
-def get_clipped_wav(sound_metadata, sound_entry, duration):
+def get_clipped_wav(sound_metadata, sound_entry, duration, game_type):
     # Check if a clipped WAV exists of the same length
     # If one exists, return the existing entry
     # Otherwise return a newly created entry
@@ -2135,6 +2146,7 @@ def get_clipped_wav(sound_metadata, sound_entry, duration):
             next_sound_id = entry['sound_id'] + 1
 
     clipped_wav_entry = copy.deepcopy(sound_entry)
+    clipped_wav_entry['orig_sound_id'] = sound_entry['sound_id']
     clipped_wav_entry['sound_id'] = next_sound_id
     clipped_wav_entry['clipped'] = True
     clipped_wav_entry['duration'] = duration
@@ -2143,14 +2155,14 @@ def get_clipped_wav(sound_metadata, sound_entry, duration):
     if "NoFilename" not in sound_entry['flags']:
         orig_wav_filename = "%s.wav" % (sound_entry['filename'])
     else:
-        orig_wav_filename = "%04d.wav" % (next_sound_id)
+        orig_wav_filename = "%c_%04x.wav" % ('d' if game_type == 0 else 'g', sound_entry['sound_id'])
 
     if "NoFilename" not in sound_entry['flags']:
         wav_filename = "_override_clipped_%d_%s.wav" % (next_sound_id, sound_entry['filename'])
     else:
-        wav_filename = "_override_clipped_%d_%04d.wav" % (next_sound_id, next_sound_id)
+        wav_filename = "_override_clipped_%d_%04x_%04x.wav" % (next_sound_id, clipped_wav_entry['orig_sound_id'], next_sound_id)
 
-    sound_folder = sound_metadata['sound_folder'] if sound_metadata['sound_folder'] else ""
+    sound_folder = sound_metadata.get('sound_folder', "")
     orig_wav_filename = os.path.join(sound_folder, orig_wav_filename)
     wav_filename = os.path.join(sound_folder, wav_filename)
 
@@ -2174,6 +2186,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
 
     last_sound_was_mutable = False
     last_played_note = None
+    last_auto_note = 0
 
     # TODO: Refactor this more eventually if possible
     for measure in sorted(chart_data.keys(), key=lambda x: int(x)):
@@ -2315,7 +2328,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                 elif cd['name'] in ["_note_start", "_note_release"]:
                     # This is an automatically generated event based on
                     # guitar_special and note_length
-                    longnote_field = [-1, 0x2c, 0x2d, 0x2c][game_type]
+                    longnote_field = [-1, 0x2c, 0x2d, 0x2c][get_note_type(cd['data']['note'])]
 
                     if measure in dtx_info and longnote_field not in dtx_info[measure]:
                         numerator = cd['time_signature']['numerator']
@@ -2329,7 +2342,29 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                     dtx_info[measure][longnote_field] = d
 
                 elif cd['name'] == "note":
-                    if is_mutable_sound and last_sound_was_mutable:
+                    clipped_wav_metadata = None
+
+                    if game_type != 0:
+                        sound_entry = None
+                        if sound_metadata and 'entries' in sound_metadata:
+                            for sound_entry in sound_metadata['entries']:
+                                if sound_entry['sound_id'] == cd['data']['sound_id']:
+                                    break
+
+                        target_duration = cd['data']['note_length'] / 300
+
+                        if target_duration > sound_entry['duration']:
+                            # Pad using the last 0.370 until it reaches target duration
+                            pass
+
+                        if target_duration != sound_entry['duration']:
+                            # Trim down to target duration here)
+                            clipped_wav_metadata = get_clipped_wav(sound_metadata, sound_entry, target_duration, game_type)
+
+                        if clipped_wav_metadata:
+                            cd['data']['sound_id'] = clipped_wav_metadata['sound_id']
+
+                    elif is_mutable_sound and last_sound_was_mutable:
                         # Sound id >= 100
                         # Only one mutable sound can be played at once
                         sound_entry = None
@@ -2346,55 +2381,47 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                                 # Create list of WAVs to be clipped once parsing is done
                                 clipped_wav_metadata = get_clipped_wav(sound_metadata, sound_entry, time_diff)
 
-                                if clipped_wav_metadata:
-                                    prev_sound_id = last_played_note['data']['data']['sound_id']
-                                    last_played_note['data']['data']['sound_id'] = clipped_wav_metadata['sound_id']
+                            if clipped_wav_metadata:
+                                prev_sound_id = last_played_note['data']['data']['sound_id']
+                                last_played_note['data']['data']['sound_id'] = clipped_wav_metadata['sound_id']
 
-                                    mapped_note = dtx_mapping[last_played_note['data']['data']['note']]
-                                    d = dtx_info[last_played_note['measure']][mapped_note]
+                                mapped_note = dtx_mapping[last_played_note['data']['data']['note']]
+                                d = dtx_info[last_played_note['measure']][mapped_note]
 
-                                    # TODO: Refactor so this and the next instance of the same code are in their own function
-                                    sound_key = "%04d_%03d_%03d" % (
-                                        last_played_note['data']['data']['sound_id'],
-                                        last_played_note['data']['data']['volume'],
-                                        last_played_note['data']['data']['pan']
-                                    )
+                                # TODO: Refactor so this and the next instance of the same code are in their own function
+                                sound_key = "%04d_%03d_%03d" % (
+                                    last_played_note['data']['data']['sound_id'],
+                                    last_played_note['data']['data']['volume'],
+                                    last_played_note['data']['data']['pan']
+                                )
 
-                                    prev_sound_key = "%04d_%03d_%03d" % (
-                                        prev_sound_id,
-                                        last_played_note['data']['data']['volume'],
-                                        last_played_note['data']['data']['pan']
-                                    )
+                                prev_sound_key = "%04d_%03d_%03d" % (
+                                    prev_sound_id,
+                                    last_played_note['data']['data']['volume'],
+                                    last_played_note['data']['data']['pan']
+                                )
 
-                                    if sound_key not in sound_keys:
-                                        sound_keys.append(sound_key)
-                                        sound_id = sound_keys.index(sound_key)
-                                        prev_sound_id = sound_keys.index(prev_sound_key)
-
-                                        sound_files[sound_id] = last_played_note['data']['data']['sound_id']
-                                        volumes[sound_id] = volumes[prev_sound_id]
-                                        pans[sound_id] = pans[prev_sound_id]
-
+                                if sound_key not in sound_keys:
+                                    sound_keys.append(sound_key)
                                     sound_id = sound_keys.index(sound_key)
-                                    d[last_played_note['beat']] = base_repr(sound_id, 36, padding=2).upper()[-2:]
-                                    dtx_info[last_played_note['measure']][mapped_note] = d
+                                    prev_sound_id = sound_keys.index(prev_sound_key)
+
+                                    sound_files[sound_id] = last_played_note['data']['data']['sound_id']
+                                    volumes[sound_id] = volumes[prev_sound_id]
+                                    pans[sound_id] = pans[prev_sound_id]
+
+                                sound_id = sound_keys.index(sound_key)
+                                d[last_played_note['beat']] = base_repr(sound_id, 36, padding=2).upper()[-2:]
+                                dtx_info[last_played_note['measure']][mapped_note] = d
 
                     mapped_note = dtx_mapping[cd['data']['note']]
 
                     # Fix mapped note for autoplay sounds
                     if mapped_note in auto_play_ranges:
-                        while measure in dtx_info and mapped_note in dtx_info[measure]:
-                            d = dtx_info[measure][mapped_note]
-
-                            if d[beat] != "00" and mapped_note in auto_play_ranges:
-                                if auto_play_ranges.index(mapped_note) + 1 >= len(auto_play_ranges):
-                                    print("Ran out of auto play spaces")
-                                    exit(1)
-
-                                idx = auto_play_ranges.index(mapped_note)
-                                mapped_note = auto_play_ranges[idx + 1]
-                            else:
-                                break
+                        # Move through all auto play channels before looping back to the beginning of the range
+                        # This is to fix a bug where a new auto play clip is played, muting the previous
+                        mapped_note = auto_play_ranges[last_auto_note % len(auto_play_ranges)]
+                        last_auto_note += 1
 
                     if measure in dtx_info and mapped_note not in dtx_info[measure]:
                         numerator = cd['time_signature']['numerator']
@@ -2435,10 +2462,10 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
                             # Down wail
                             # Currently down wailing isn't supported by any simulator,
                             # so just use up wail's commands for now
-                            wail_field = [-1, 0x28, 0xa8, 0x28][game_type]
+                            wail_field = [-1, 0x28, 0xa8, 0x28][get_note_type(cd['data']['note'])]
                         else:  # 0, 1, ?
                             # Up wail
-                            wail_field = [-1, 0x28, 0xa8, 0x28][game_type]
+                            wail_field = [-1, 0x28, 0xa8, 0x28][get_note_type(cd['data']['note'])]
 
                         if measure in dtx_info and wail_field not in dtx_info[measure]:
                             numerator = cd['time_signature']['numerator']
@@ -2492,7 +2519,7 @@ def generate_dtx_info(chart_data, sound_metadata, game_type):
     return dtx_info, bpms, sound_files, volumes, pans
 
 def downscale_beat_division_dtx_chart(input_dtx_info):
-    
+
     output_dtx_info = input_dtx_info
     #Reduce from 1920 divisions to 192 as that is the max supported in dtx
     for measure in sorted(output_dtx_info.keys(), key=lambda x: int(x)):
@@ -2504,9 +2531,9 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                 temp_new_object = []
                 for x in range(0, in_length):
                     if(output_dtx_info[measure][key][x] != '00'):
-                        #Round x to nearest integer after divide by 10 
+                        #Round x to nearest integer after divide by 10
                         num_y = int(round(x/10.0))
-                        
+
                         #if num_y happens to be equal to out_length, move the note to the next measure at the zeroth position!
                         if(num_y >= out_length):
                             next_measure = measure + 1
@@ -2519,12 +2546,12 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                                         next_measure_length = int(float(output_dtx_info[next_measure][2][0]) * 1920)
                                     #Create new key for next measure
                                     output_dtx_info[next_measure][key] = ['00'] * next_measure_length
-                                
+
                                 output_dtx_info[next_measure][key][0] = output_dtx_info[measure][key][x]
                                 output_dtx_info[measure][key][x] = '00'
                             else:
                                 print('Warning: note removed at last measure!')
-                        else:                            
+                        else:
                             #Problem: Later values within 5 beat division will overwrite previous values
                             #but it shouldn't happen because game never have notes so close to one another
                             new_array[num_y] = output_dtx_info[measure][key][x]
@@ -2533,14 +2560,14 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                                 'value': new_array[num_y]
                             })
                 #TODO: Further reduce out_length based on HCF or GCD
-                #Find GCD of all index in temp_new_object                
+                #Find GCD of all index in temp_new_object
                 gcd = 0
                 len_new_object = len(temp_new_object)
                 for tIndex in range(0, len_new_object):
-                    gcd = math.gcd(gcd, temp_new_object[tIndex]['index'])                    
+                    gcd = math.gcd(gcd, temp_new_object[tIndex]['index'])
                     if(tIndex == len_new_object - 1):
                         gcd = math.gcd(gcd, out_length)
-                
+
                 #print('Measure:', measure, ' has GCD of' , gcd)
                 #Replace new_array with the reduced length
                 if(gcd > 0):
@@ -2550,17 +2577,46 @@ def downscale_beat_division_dtx_chart(input_dtx_info):
                         reducedIndex = temp_new_object[tIndex]['index'] // gcd
                         new_array[reducedIndex] = temp_new_object[tIndex]['value']
 
-                #Overwrite with new reduced array 
+                #Overwrite with new reduced array
                 output_dtx_info[measure][key] = new_array
 
     return output_dtx_info
 
 def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, params):
+    for chart in [metadata, orig_chart_data]:
+        is_metadata = chart['header']['is_metadata']
+
+        if 'timestamp' not in chart:
+            # Old DTX plugin requires a timestamp field for charts, so give it what it wants
+            chart['timestamp'] = {}
+            for event in chart['beat_data']:
+                if event['timestamp'] not in chart['timestamp']:
+                    chart['timestamp'][event['timestamp']] = []
+
+                timestamp = event['timestamp']
+
+                if not is_metadata and event['name'] in ['baron', 'baroff', 'measure', 'beat', 'unk0c', 'bpm', 'barinfo']:
+                    # If these are in the non-metadata chart then it messes up the parser with duplicate commands, so make sure they are not in the charts at this point (will be re-added later though...)
+                    continue
+
+                chart['timestamp'][timestamp].append(event)
+
+            del chart['beat_data']
+
     game_type = orig_chart_data['header']['game_type']
 
     chart_data = generate_metadata_fields(metadata, orig_chart_data, params.get('dtx_fake_timesigs', False))
     chart_data = generate_measure_beat_for_chart(chart_data)
     chart_data = get_chart_data_by_measure_beat(chart_data)
+
+    if sound_metadata:
+        if game_type == 0:
+            # Drum
+            sound_metadata = copy.deepcopy(sound_metadata.get('drum', None))
+
+        else:
+            # Guitar/Bass/etc
+            sound_metadata = copy.deepcopy(sound_metadata.get('guitar', None))
 
     if sound_metadata is not None:
         sound_metadata['sound_folder'] = params.get('sound_folder', None)
@@ -2582,6 +2638,10 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
         output.append("#ARTIST %s" % orig_chart_data['header']['artist'])
     else:
         output.append("#ARTIST (no artist)")
+
+    if 'difficulty' in orig_chart_data['header']:
+        label_array = ['BASIC','ADVANCED','EXTREME','MASTER']
+        output.append("#COMMENT {}".format(label_array[orig_chart_data['header']['difficulty'] - 1]))
 
     if 'level' in orig_chart_data['header']:
         for k in orig_chart_data['header']['level']:
@@ -2609,13 +2669,19 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
         output.append("#AVIZZ %s" % (movie_sub_folder + orig_chart_data['header']['movie_filename']))
     else:
         output.append("#AVIZZ mv%04d.avi" % orig_chart_data['header']['musicid'])
-    
-    output.append("#BPM %s" % (bpms[0]))
+
+    default_bpm = orig_chart_data['header'].get('bpm', bpms[0])
+    output.append("#BPM %s" % (default_bpm))
     for i in range(0, len(bpms)):
         output.append("#BPM%s %s" % (base_repr(i+1, 36, padding=2).upper()[-2:], bpms[i]))
 
+    if len(sound_files.keys()) > 1295 - 1:
+        # - 1 because of WAVZZ being reserved for BGM
+        print("ERROR: Not enough room to store all keysounds! Found %d keysounds but can only hold %d" % (len(sound_files.keys()), 1295 - 1))
+        exit(1)
+
     for k in sorted(sound_files.keys()):
-        wav_filename = "%04x.wav" % sound_files[k]
+        wav_filename = "%c_%04x.wav" % ('d' if game_type == 0 else 'g', sound_files[k])
 
         if sound_metadata and 'entries' in sound_metadata:
             for sound_entry in sound_metadata['entries']:
@@ -2626,7 +2692,7 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
                     wav_filename = "%s.wav" % sound_entry['filename']
 
                 if sound_entry.get('clipped', False):
-                    wav_filename = "_override_clipped_%d_%s" % (sound_entry['sound_id'], wav_filename)
+                    wav_filename = "_override_clipped_%d_%04x_%04x.wav" % (sound_entry['sound_id'], sound_entry['orig_sound_id'], sound_entry['sound_id'])
 
                 break
 
@@ -2645,21 +2711,49 @@ def generate_dtx_chart_from_json(metadata, orig_chart_data, sound_metadata, para
             "k"
         ])
 
-        if bgm_filename_part == "__bk":
-            # A BGM file with just the bass doesn't exist
-            # Default to one without bass or guitar
-            bgm_filename_part = "d__k"
+        def get_bgm_filename(musicid, part):
+            bgm_filenames = [
+                "bgm%04d%s_xg.wav" % (musicid, part),
+                "bgm%04d%s.wav" % (musicid, part),
+            ]
 
-        bgm_filename = "bgm%04d%s.wav" % (orig_chart_data['header']['musicid'],
-                                          bgm_filename_part)
+            sound_folder = params.get('sound_folder', None)
+            if sound_folder:
+                for bgm_filename in bgm_filenames:
+                    if os.path.exists(os.path.join(sound_folder, bgm_filename)):
+                        return bgm_filename
+
+            return None
+
+        bgm_filename = get_bgm_filename(orig_chart_data['header']['musicid'], bgm_filename_part)
+        print(bgm_filename_part, bgm_filename)
+        if not bgm_filename:
+            bgm_filename = "bgm.wav"
+
+            base_bgm_filename = None
+            if bgm_filename_part == "dg_k":
+                base_bgm_filename = get_bgm_filename(orig_chart_data['header']['musicid'], "d__k")
+
+            if not base_bgm_filename:
+                print("Couldn't find base BGM")
+                bgm_filename = "bgm.wav"
+
+            else:
+                base_bgm = audio.get_audio_file(os.path.join(sound_metadata['sound_folder'], base_bgm_filename))
+                guitar_track, _ = audio.get_isolated_bgm(sound_metadata['sound_folder'], "guitar")
+                bass_bgm = base_bgm.overlay(guitar_track)
+                bgm_filename = "bgm_bass.wav"
+                bass_bgm.export(os.path.join(sound_metadata['sound_folder'], bgm_filename), format="wav")
 
     output.append("#WAVZZ %s" % bgm_filename)
 
     for k in sorted(volumes.keys()):
-        output.append("#VOLUME%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], volumes[k]))
+        if volumes[k] != 100:
+            output.append("#VOLUME%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], volumes[k]))
 
     for k in sorted(pans.keys()):
-        output.append("#PAN%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], pans[k]))
+        if pans[k] != 0:
+            output.append("#PAN%s %d" % (base_repr(int(k), 36, padding=2).upper()[-2:], pans[k]))
 
     output.append("#00001: ZZ")
     output.append("#00054: ZZ")
@@ -2684,7 +2778,7 @@ def get_charts_data(charts, sound_metadata, params):
 
     return [{
         'chart': x,
-        'data': generate_dtx_chart_from_json(copy.deepcopy(chart_metadata), x, sound_metadata, params)
+        'data': generate_dtx_chart_from_json(copy.deepcopy(chart_metadata), copy.deepcopy(x), sound_metadata, params)
     } for x in charts if x['header']['is_metadata'] == 0]
 
 
@@ -2742,6 +2836,7 @@ def create_set_definition_file(json_dtx, params, charts_data):
     song_title = None
     label_array = ['BASIC','ADVANCED','EXTREME','MASTER']
     output_set_data = {}
+    output_set_data_title = {}
     for x in charts_data:
         output_filename = get_dtx_filename(json_dtx, x)
 
@@ -2754,11 +2849,20 @@ def create_set_definition_file(json_dtx, params, charts_data):
         if 'title' in x['chart']['header']:
             song_title = x['chart']['header']['title']
 
+        part_str = game_type
+        if 'level' in x['chart']['header']:
+            has_drum = "drum" in x['chart']['header']['level']
+            has_guitar = "guitar" in x['chart']['header']['level']
+            has_bass = "bass" in x['chart']['header']['level']
+            part_str = "/".join(list(filter(None, ["Drum" if has_drum else None, "Guitar" if has_guitar else None, "Bass" if has_bass else None])))
+
+        output_set_data_title[game_type] = "{} ({})".format(song_title, part_str)
+
     with open(output_set_filename, "a", encoding="shift-jis") as outfile:
         for part in output_set_data:
             if song_title:
-                #outfile.write("#TITLE: {} ({})\n".format(song_title, part))
-                outfile.write("#TITLE: {}\n".format(song_title))
+                outfile.write("#TITLE: {}\n".format(output_set_data_title[part]))
+                # outfile.write("#TITLE: {}\n".format(song_title))
 
             for difficulty in sorted(output_set_data[part].keys(), key=lambda x: int(x)):
                 outfile.write("#L{}LABEL: {}\n".format(difficulty,

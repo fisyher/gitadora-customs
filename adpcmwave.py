@@ -2,6 +2,8 @@ import os
 import subprocess
 import tmpfile
 
+import helper
+
 def decode_data(data, rate, channels, bits):
     input_filename = tmpfile.mkstemp()
     output_filename = tmpfile.mkstemp()
@@ -10,10 +12,12 @@ def decode_data(data, rate, channels, bits):
         f.write(data)
 
     prefix = ""
-    if os.name != "nt":
-        prefix = "wine"
+    if helper.is_wsl():
+        prefix = "./"
+    elif os.name != "nt":
+        prefix = "wine "
 
-    cmd = "{} adpcmwavetool.exe d \"{}\" \"{}\" {}".format(prefix, input_filename, output_filename, channels)
+    cmd = "{}adpcmwavetool.exe d \"{}\" \"{}\" {}".format(prefix, helper.get_windows_path(input_filename), helper.get_windows_path(output_filename), channels)
     subprocess.call(cmd, shell=True)
 
     with open(output_filename, "rb") as f:
@@ -29,10 +33,12 @@ def encode_data(data, channels):
         f.write(data)
 
     prefix = ""
-    if os.name != "nt":
-        prefix = "wine"
+    if helper.is_wsl():
+        prefix = "./"
+    elif os.name != "nt":
+        prefix = "wine "
 
-    cmd = "{} adpcmwavetool.exe e \"{}\" \"{}\" {}".format(prefix, input_filename, output_filename, channels)
+    cmd = "{}adpcmwavetool.exe e \"{}\" \"{}\" {}".format(prefix, helper.get_windows_path(input_filename), helper.get_windows_path(output_filename), channels)
     subprocess.call(cmd, shell=True)
 
     with open(output_filename, "rb") as f:

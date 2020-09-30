@@ -107,8 +107,8 @@ def read_mdb(filename):
 
 
 def get_next_id(mdb):
-    #next_id = 3000 #this is obviously a quick hax to a work-in-progress
-    next_id = 2500
+    next_id = 3000
+
     while next_id in mdb['records']:
         next_id += 1
 
@@ -130,11 +130,7 @@ def add_song_to_mdb(mdb, package, fresh=False, unsafe=False):
                 difficulty = difficulties[difficulty_idx]
 
                 if difficulty in package['difficulty'][part]:
-                    diff_lvl = package['difficulty'][part][difficulty]
-                    # x 10 to get 3 digit format for lvl if diff_lvl is 2 digits
-                    if diff_lvl < 100:
-                        diff_lvl *= 10
-                    xg_diff_list[(part_idx * 5) + difficulty_idx] = diff_lvl 
+                    xg_diff_list[(part_idx * 5) + difficulty_idx] = package['difficulty'][part][difficulty]
 
     new_record = {
         'pad_diff': {
@@ -295,9 +291,16 @@ def add_song_to_mdb(mdb, package, fresh=False, unsafe=False):
         },
         'contain_stat': {
             'type': "u8",
-            'value': [1 if 'guitar' in package['files'] else 0, 1 if 'drum' in package['files'] else 0]
+            'value': [2 if 'guitar' in package['files'] else 0, 2 if 'drum' in package['files'] else 0]
         },
     }
+
+    if 'extra' in package:
+        for k in package['extra']:
+            new_record[k] = {
+                'type': package['extra'][k]['type'],
+                'value': package['extra'][k]['value']
+            }
 
     new_record['__hash'] = {
         'type': "str",
@@ -408,7 +411,6 @@ def add_packages_to_mdb(mdb_filename, packages, fresh, unsafe):
         dupe += dupes
 
     mdb = update_entry_orders(mdb)
-
     save_mdb(mdb, mdb_filename)
 
     return list(set(dupes))
@@ -472,6 +474,9 @@ def prepare_graphics_for_package(package):
         package['graphics']['jacket_small'] = "jacket_64.png"
         tmpfile.add_temp_file(jacket_64_filename)
 
+        jacket_img.close()
+        del jacket_img
+
 
 def patch_sq3(filename, music_id):
     # Patch music ID in SQ3 file or else the game will crash
@@ -486,11 +491,7 @@ def create_song_data_ifs_for_package(package, ifs_data_folder="data\\ifs_pack"):
     seq_ifs_outputfile = os.path.join(output_folder, "m%04d_seq.ifs" % package['music_id'])
     bgm_ifs_outputfile = os.path.join(output_folder, "m%04d_bgm.ifs" % package['music_id'])
 
-    try:
-        os.makedirs(output_folder)
-    except OSError:
-        # Folder already exists
-        pass
+    os.makedirs(output_folder, exist_ok=True)
 
     seq_folder = tmpfile.mkdtemp("seq")
     bgm_folder = tmpfile.mkdtemp("bgm")
@@ -536,11 +537,7 @@ def create_song_data_ifs_for_package(package, ifs_data_folder="data\\ifs_pack"):
 def create_graphic_ifs_for_packages(packages, key, base_filename, output_filename):
     output_directory = os.path.dirname(output_filename)
 
-    try:
-        os.makedirs(output_directory)
-    except OSError:
-        # Folder already exists
-        pass
+    os.makedirs(output_directory, exist_ok=True)
 
     _, ifs_path = ifs.extract(output_filename)
 
@@ -591,18 +588,16 @@ def read_notes_info(filename):
                     elif hasattr(attr, 'pad'):
                         # Drum
                         note_data = [int(x) for x in attr.pad.text.split(' ')]
-                        # Order of note types in notes_info.xml is not the same as displayed in game!
-                        # It should be hihat snare RPedal HT LT RightCymbal LeftCymbal FT LPedal
                         note_data = {
-                            "hihat": note_data[0],
-                            "snare": note_data[1],
-                            "bass": note_data[2],
-                            "hightom": note_data[3],
-                            "lowtom": note_data[4],
-                            "rightcymbal": note_data[5],
-                            "leftcymbal": note_data[6],
+                            "leftcymbal": note_data[0],
+                            "hihat": note_data[1],
+                            "leftpedal": note_data[2],
+                            "snare": note_data[3],
+                            "hightom": note_data[4],
+                            "bass": note_data[5],
+                            "lowtom": note_data[6],
                             "floortom": note_data[7],
-                            "leftpedal": note_data[8]
+                            "rightcymbal": note_data[8],
                         }
 
                 else:
@@ -708,35 +703,33 @@ def save_notes_info(filename, notes_info):
                     ),
                 ),
             ),
-            # Order of note types in notes_info.xml is not the same as displayed in game!
-            # It should be hihat snare RPedal HT LT RightCymbal LeftCymbal FT LPedal
             E.dm(
                 E.diff_level0(
                     E.notes_nr("%d" % notes_info[x]['data']['drum']['nov']['total'], __type="s32"),
-                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['nov']['notes']['hihat'], notes_info[x]['data']['drum']['nov']['notes']['snare'], notes_info[x]['data']['drum']['nov']['notes']['bass'], notes_info[x]['data']['drum']['nov']['notes']['hightom'], notes_info[x]['data']['drum']['nov']['notes']['lowtom'], notes_info[x]['data']['drum']['nov']['notes']['rightcymbal'], notes_info[x]['data']['drum']['nov']['notes']['leftcymbal'], notes_info[x]['data']['drum']['nov']['notes']['floortom'], notes_info[x]['data']['drum']['nov']['notes']['leftpedal']]]), __type="s32", __count="9"),
+                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['nov']['notes']['leftcymbal'], notes_info[x]['data']['drum']['nov']['notes']['hihat'], notes_info[x]['data']['drum']['nov']['notes']['leftpedal'], notes_info[x]['data']['drum']['nov']['notes']['snare'], notes_info[x]['data']['drum']['nov']['notes']['hightom'], notes_info[x]['data']['drum']['nov']['notes']['bass'], notes_info[x]['data']['drum']['nov']['notes']['lowtom'], notes_info[x]['data']['drum']['nov']['notes']['floortom'], notes_info[x]['data']['drum']['nov']['notes']['rightcymbal']]]), __type="s32", __count="9"),
                 ),
                 E.diff_level1(
                     E.notes_nr("%d" % notes_info[x]['data']['drum']['bsc']['total'], __type="s32"),
-                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['bsc']['notes']['hihat'], notes_info[x]['data']['drum']['bsc']['notes']['snare'], notes_info[x]['data']['drum']['bsc']['notes']['bass'], notes_info[x]['data']['drum']['bsc']['notes']['hightom'], notes_info[x]['data']['drum']['bsc']['notes']['lowtom'], notes_info[x]['data']['drum']['bsc']['notes']['rightcymbal'], notes_info[x]['data']['drum']['bsc']['notes']['leftcymbal'], notes_info[x]['data']['drum']['bsc']['notes']['floortom'], notes_info[x]['data']['drum']['bsc']['notes']['leftpedal']]]), __type="s32", __count="9"),
+                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['bsc']['notes']['leftcymbal'], notes_info[x]['data']['drum']['bsc']['notes']['hihat'], notes_info[x]['data']['drum']['bsc']['notes']['leftpedal'], notes_info[x]['data']['drum']['bsc']['notes']['snare'], notes_info[x]['data']['drum']['bsc']['notes']['hightom'], notes_info[x]['data']['drum']['bsc']['notes']['bass'], notes_info[x]['data']['drum']['bsc']['notes']['lowtom'], notes_info[x]['data']['drum']['bsc']['notes']['floortom'], notes_info[x]['data']['drum']['bsc']['notes']['rightcymbal']]]), __type="s32", __count="9"),
                 ),
                 E.diff_level2(
                     E.notes_nr("%d" % notes_info[x]['data']['drum']['adv']['total'], __type="s32"),
-                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['adv']['notes']['hihat'], notes_info[x]['data']['drum']['adv']['notes']['snare'], notes_info[x]['data']['drum']['adv']['notes']['bass'], notes_info[x]['data']['drum']['adv']['notes']['hightom'], notes_info[x]['data']['drum']['adv']['notes']['lowtom'], notes_info[x]['data']['drum']['adv']['notes']['rightcymbal'], notes_info[x]['data']['drum']['adv']['notes']['leftcymbal'], notes_info[x]['data']['drum']['adv']['notes']['floortom'], notes_info[x]['data']['drum']['adv']['notes']['leftpedal']]]), __type="s32", __count="9"),
+                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['adv']['notes']['leftcymbal'], notes_info[x]['data']['drum']['adv']['notes']['hihat'], notes_info[x]['data']['drum']['adv']['notes']['leftpedal'], notes_info[x]['data']['drum']['adv']['notes']['snare'], notes_info[x]['data']['drum']['adv']['notes']['hightom'], notes_info[x]['data']['drum']['adv']['notes']['bass'], notes_info[x]['data']['drum']['adv']['notes']['lowtom'], notes_info[x]['data']['drum']['adv']['notes']['floortom'], notes_info[x]['data']['drum']['adv']['notes']['rightcymbal']]]), __type="s32", __count="9"),
                 ),
                 E.diff_level3(
                     E.notes_nr("%d" % notes_info[x]['data']['drum']['ext']['total'], __type="s32"),
-                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['ext']['notes']['hihat'], notes_info[x]['data']['drum']['ext']['notes']['snare'], notes_info[x]['data']['drum']['ext']['notes']['bass'], notes_info[x]['data']['drum']['ext']['notes']['hightom'], notes_info[x]['data']['drum']['ext']['notes']['lowtom'], notes_info[x]['data']['drum']['ext']['notes']['rightcymbal'], notes_info[x]['data']['drum']['ext']['notes']['leftcymbal'], notes_info[x]['data']['drum']['ext']['notes']['floortom'], notes_info[x]['data']['drum']['ext']['notes']['leftpedal']]]), __type="s32", __count="9"),
+                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['ext']['notes']['leftcymbal'], notes_info[x]['data']['drum']['ext']['notes']['hihat'], notes_info[x]['data']['drum']['ext']['notes']['leftpedal'], notes_info[x]['data']['drum']['ext']['notes']['snare'], notes_info[x]['data']['drum']['ext']['notes']['hightom'], notes_info[x]['data']['drum']['ext']['notes']['bass'], notes_info[x]['data']['drum']['ext']['notes']['lowtom'], notes_info[x]['data']['drum']['ext']['notes']['floortom'], notes_info[x]['data']['drum']['ext']['notes']['rightcymbal']]]), __type="s32", __count="9"),
                 ),
                 E.diff_level4(
                     E.notes_nr("%d" % notes_info[x]['data']['drum']['mst']['total'], __type="s32"),
-                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['mst']['notes']['hihat'], notes_info[x]['data']['drum']['mst']['notes']['snare'], notes_info[x]['data']['drum']['mst']['notes']['bass'], notes_info[x]['data']['drum']['mst']['notes']['hightom'], notes_info[x]['data']['drum']['mst']['notes']['lowtom'], notes_info[x]['data']['drum']['mst']['notes']['rightcymbal'], notes_info[x]['data']['drum']['mst']['notes']['leftcymbal'], notes_info[x]['data']['drum']['mst']['notes']['floortom'], notes_info[x]['data']['drum']['mst']['notes']['leftpedal']]]), __type="s32", __count="9"),
+                    E.pad(" ".join(["%d" % n for n in [notes_info[x]['data']['drum']['mst']['notes']['leftcymbal'], notes_info[x]['data']['drum']['mst']['notes']['hihat'], notes_info[x]['data']['drum']['mst']['notes']['leftpedal'], notes_info[x]['data']['drum']['mst']['notes']['snare'], notes_info[x]['data']['drum']['mst']['notes']['hightom'], notes_info[x]['data']['drum']['mst']['notes']['bass'], notes_info[x]['data']['drum']['mst']['notes']['lowtom'], notes_info[x]['data']['drum']['mst']['notes']['floortom'], notes_info[x]['data']['drum']['mst']['notes']['rightcymbal']]]), __type="s32", __count="9"),
                 ),
             )
         ) for x in sorted(notes_info.keys(), key=lambda x:int(x))]
     )
 
-    if not os.path.exists(filename) and not os.path.exists(os.path.dirname(filename)):
-        os.makedirs(os.path.dirname(filename))
+    if not os.path.exists(filename):
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     open(filename, "w", encoding="utf-8").write(etree.tostring(note_info_tree, encoding='unicode', pretty_print=True))
 
@@ -914,8 +907,8 @@ def save_phrase_address_list(filename, pal):
         )
     )
 
-    if not os.path.exists(filename) and not os.path.exists(os.path.dirname(filename)):
-        os.makedirs(os.path.dirname(filename))
+    if not os.path.exists(filename):
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     open(filename, "w", encoding="utf-8").write(etree.tostring(pal_tree, encoding='unicode', pretty_print=True))
 
@@ -946,11 +939,10 @@ def add_packages_to_phrase_address_list(filename, packages, dupes):
     save_phrase_address_list(filename, pal)
 
 
-def install_packages(game_directory="", packages_directory="packages", game_data_folder="data", fresh=False, unsafe=False):
+def install_packages(game_directory="", packages_directory="packages", game_data_folder="data", fresh=False, unsafe=False, new_only=False):
     packages = get_package_info(packages_directory)
 
     game_data_folder = os.path.join(game_directory, game_data_folder)
-    game_data_ifs_folder = os.path.join(game_directory, "data\\ifs_pack")
 
     dupes = []
     dupes += add_packages_to_mdb(os.path.join(game_data_folder, "product", "xml", "mdb_xg.xml"), packages, fresh, unsafe)
@@ -963,8 +955,18 @@ def install_packages(game_directory="", packages_directory="packages", game_data
 
     packages_split = {}
     for package in packages:
+        data_folder = ("d%04d" % package['music_id'])[:4]
+        ifs_data_folder = "data\\ifs_pack"
+        output_folder = os.path.join(ifs_data_folder, data_folder)
+        seq_ifs_outputfile = os.path.join(output_folder, "m%04d_seq.ifs" % package['music_id'])
+        bgm_ifs_outputfile = os.path.join(output_folder, "m%04d_bgm.ifs" % package['music_id'])
+
+        if new_only and os.path.exists(seq_ifs_outputfile) and os.path.exists(bgm_ifs_outputfile):
+            print("Already exists, skipping package", package['__directory'])
+            continue
+
         prepare_graphics_for_package(package)
-        create_song_data_ifs_for_package(package, game_data_ifs_folder)
+        create_song_data_ifs_for_package(package, ifs_data_folder)
 
         # Copy movie file
         if 'files' in package and 'movie' in package['files']:
@@ -1044,11 +1046,7 @@ def create_graphic_texbin_for_packages(packages, key, base_filename, output_file
     output_filename = os.path.abspath(output_filename)
     texbin_directory = os.path.splitext(output_filename)[0]
 
-    try:
-        os.makedirs(texbin_directory)
-    except OSError:
-        # Folder already exists
-        pass
+    os.makedirs(texbin_directory, exist_ok=True)
 
     tmpfile.add_temp_folder(texbin_directory)
 
@@ -1103,7 +1101,15 @@ if __name__ == "__main__":
     parser.add_argument('-g', '--game-dir', help='Input game directory', default="")
     parser.add_argument('-p', '--packages-dir', help='Input packages directory', default="packages")
     parser.add_argument('-u', '--unsafe', help='Enable unsafe mode', default=False, action='store_true')
+    parser.add_argument('-s', '--sort', help='Sort music database only', default=False, action='store_true')
+    parser.add_argument('-n', '--update-new', help='Process new folders only', default=False, action='store_true')
     args = parser.parse_args()
 
-    patch_game_for_customs(args.game_dir)
-    install_packages(args.game_dir, args.packages_dir, unsafe=args.unsafe)
+    if args.sort:
+        game_data_folder = os.path.join(args.game_dir, "data")
+        add_packages_to_mdb(os.path.join(game_data_folder, "product", "xml", "mdb_xg.xml"), [], False, False)
+        add_packages_to_mdb(os.path.join(game_data_folder, "product", "xml", "mdb_mt.xml"), [], False, False)
+
+    else:
+        patch_game_for_customs(args.game_dir)
+        install_packages(args.game_dir, args.packages_dir, unsafe=args.unsafe, new_only=args.update_new)

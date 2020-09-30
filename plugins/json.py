@@ -9,9 +9,7 @@ class JsonFormat:
 
     @staticmethod
     def to_json(params):
-        #Original code fails when doing direct conversion from json
-        #input_filename = os.path.join(params.get('input', ""), "output.json")
-        input_filename = params.get('input')
+        input_filename = os.path.join(params.get('input'), "output.json")
 
         if not input_filename or not os.path.exists(input_filename):
             return None
@@ -21,15 +19,7 @@ class JsonFormat:
 
     @staticmethod
     def to_chart(params):
-        num = 1
-        outfileName = "output" + str(num) + ".json"        
-        output_filename = os.path.join(params.get('output', ""), outfileName)
-        while os.path.exists(output_filename):
-            num += 1
-            outfileName = "output" + str(num) + ".json"        
-            output_filename = os.path.join(params.get('output', ""), outfileName)
-
-        #output_filename = params.get('output', "")
+        output_filename = os.path.join(params.get('output', ""), "output.json")
 
         with open(output_filename, "w") as f:
             f.write(params.get('input', ""))

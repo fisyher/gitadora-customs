@@ -55,28 +55,33 @@ def get_song_info_from_csv(input_filename, music_id):
     if not os.path.exists(input_filename):
         return None
 
-    #csv_file = open(input_filename, 'r', encoding="utf-8")
-    reader = csv.DictReader(open(input_filename, 'r', encoding="shift-jis"))
+    for encoding in ['shift-jis', 'utf-8']:
+        reader = csv.DictReader(open(input_filename, 'r', encoding=encoding))
 
-    song_info_ver = 0
-    song_info = None
-    for data in reader:
-        if int(data['music_id']) == music_id:
-            if int(data['game_version']) >= song_info_ver and int(data['game_version']) < 1000:
-                song_info_ver = int(data['game_version'])
+        try:
+            song_info_ver = 0
+            song_info = None
+            for data in reader:
+                if int(data['music_id']) == music_id:
+                    if int(data['game_version']) >= song_info_ver and int(data['game_version']) < 1000:
+                        song_info_ver = int(data['game_version'])
 
-                song_info = {
-                    'music_id': music_id
-                }
+                        song_info = {
+                            'music_id': music_id,
+                            'game_version': song_info_ver,
+                            'gf_version': int(data['first_version_gf']),
+                            'dm_version': int(data['first_version_dm']),
+                        }
 
-                song_info['title'] = data['title_name']
-                song_info['artist'] = data['artist_title']
-                song_info['difficulty'] = [data[k] for k in ["diff_dm_easy","diff_dm_bsc","diff_dm_adv","diff_dm_ext","diff_dm_mst","diff_gf_easy","diff_gf_bsc","diff_gf_adv","diff_gf_ext","diff_gf_mst","diff_gf_b_easy","diff_gf_b_bsc","diff_gf_b_adv","diff_gf_b_ext","diff_gf_b_mst"]]
+                        song_info['title'] = data['title_name']
+                        song_info['artist'] = data['artist_title']
 
-                #Also add bpm and bpm2
-                song_info['bpm'] = data['bpm']
-                song_info['bpm2'] = data['bpm2']
+                        # Allow a movie filename override
+                        song_info['movie_filename'] = data.get('movie_filename', None)
 
-                #Add movie filename
-                song_info['movie_filename'] = data['movie_filename']
-    return song_info
+            return song_info
+
+        except UnicodeDecodeError:
+            continue
+
+    return None

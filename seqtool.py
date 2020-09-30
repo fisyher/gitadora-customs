@@ -15,6 +15,7 @@ import vas3tool
 import ifs
 import eamxml
 import event
+import mdb
 
 import plugins
 
@@ -24,6 +25,9 @@ def find_handler(input_filename, input_format):
     formats = [importlib.import_module('plugins.' + name).get_class() for name in plugins.__all__]
 
     for handler in formats:
+        if not handler:
+            continue
+
         if input_format is not None and handler.get_format_name().lower() == input_format.lower():
             return handler
         elif input_filename is not None and handler.is_format(input_filename):
@@ -108,7 +112,59 @@ def process_file(params):
     if output_format.lower() != 'wav' and 'output' in params and not os.path.exists(params['output']):
         os.makedirs(params['output'])
 
+    # Add music information from database
+    if params.get('musicdb', None) and params.get('musicid', None):
+        try:
+            csv_info = mdb.get_song_info_from_csv(params.get('musicdb_csv', "gitadora_music.csv"), params['musicid'])
+
+        except:
+            csv_info = None
+
+        mdb_info = mdb.get_song_info_from_mdb(params['musicdb'], params['musicid'])
+
+        if csv_info:
+            # Pull properly named Japanese artist and title fields from csv if it exists
+            mdb_info['title'] = csv_info['title']
+            mdb_info['artist'] = csv_info['artist']
+
+            if 'movie_filename' in csv_info:
+                mdb_info['movie_filename'] = csv_info['movie_filename']
+
+        if mdb_info:
+            json_data = json.loads(json_data)
+
+            for chart in json_data['charts']:
+                if chart['header']['is_metadata']:
+                    continue
+
+                chart['header']['level'] = {}
+
+                diffs = [chart['header']['game_type']]
+
+                if chart['header']['game_type'] == 1 and params.get('merge_guitars', False):
+                    diffs.append(2)
+
+                for x in diffs:
+                    k = {
+                        0: "drum",
+                        1: "guitar",
+                        2: "bass",
+                        3: "open",
+                    }[x]
+
+                    diff = mdb_info['difficulty'][x * 5 + chart['header']['difficulty']]
+
+                    if diff > 0:
+                        chart['header']['level'][k] = diff
+
+                chart['header']['title'] = mdb_info['title']
+                chart['header']['artist'] = mdb_info['artist']
+                chart['header']['bpm'] = mdb_info['bpm']
+
+            json_data = json.dumps(json_data)
+
     params['input'] = json_data
+
     output_handler.to_chart(params)
 
 
@@ -116,13 +172,18 @@ def get_sound_metadata(sound_folder):
     if not sound_folder:
         return None
 
-    sound_metadata_filename = os.path.join(sound_folder, "metadata.json")
+    sound_metadata = {}
+    sound_metadata_filename_guitar = os.path.join(sound_folder, "g_metadata.json")
+    if os.path.exists(sound_metadata_filename_guitar):
+        with open(sound_metadata_filename_guitar, "r") as f:
+            sound_metadata['guitar'] = json.loads(f.read())
 
-    if os.path.exists(sound_metadata_filename):
-        with open(sound_metadata_filename, "r") as f:
-            return json.loads(f.read())
+    sound_metadata_filename_drum = os.path.join(sound_folder, "d_metadata.json")
+    if os.path.exists(sound_metadata_filename_drum):
+        with open(sound_metadata_filename_drum, "r") as f:
+            sound_metadata['drum'] = json.loads(f.read())
 
-    return None
+    return sound_metadata if sound_metadata else None
 
 
 if __name__ == "__main__":
@@ -156,7 +217,8 @@ if __name__ == "__main__":
     parser.add_argument('--copy-raw-files', action='store_true', help="Copy the raw files without processing", default=False)
     parser.add_argument('--generate-bgms', action='store_true', help="Generate BGMs for various combination of instruments as needed (SQ2/SQ3)", default=False)
 
-    parser.add_argument('--music-db', help="Music database file to read metadata about song")
+    parser.add_argument('--music-db', help="Music database file (XML) to read metadata about song")
+    parser.add_argument('--music-db-csv', help="Music database file (CSV) to read metadata about song", default="gitadora_music.csv")
     parser.add_argument('--music-id', type=int, help="Force a music ID", default=None)
 
     parser.add_argument('--render-auto-name', action='store_true', help="Automatically name output file")
@@ -175,6 +237,10 @@ if __name__ == "__main__":
     parser.add_argument('--single-threaded', help="Process charts in single threads", default=False, action='store_true')
 
     args = parser.parse_args()
+
+    if args.output_format.lower() == "dtx" and os.path.exists(os.path.join(args.output, "set.def")):
+        # Crappy hack but I don't want to solve this properly
+        os.unlink(os.path.join(args.output, "set.def"))
 
     # Clean parts and difficulty
     if 'all' in args.parts:
@@ -292,7 +358,7 @@ if __name__ == "__main__":
             # Extract va3 files
             if 'sound' in file_set and not args.no_sounds:
                 print("Parsing %s..." % file_set['sound'])
-                vas3tool.read_vas3(file_set['sound'], sound_folder)
+                vas3tool.read_vas3(file_set['sound'], sound_folder, force_game=("drum" if file_set['sound'][-5] == 'd' else "guitar"))
 
             params = {
                 "input": file_set['seq'],
@@ -307,6 +373,7 @@ if __name__ == "__main__":
                 "merge_guitars": args.merge_guitars,
                 "events": file_set['events'] if 'events' in file_set else {},
                 "musicdb": args.music_db,
+                "musicdb_csv": args.music_db_csv,
                 "musicid": args.music_id,
                 "input_split": {
                     "drum": {
@@ -354,7 +421,6 @@ if __name__ == "__main__":
 
             process_file(params)
 
-
             if args.input_ifs_seq and args.copy_raw_files:
                 if os.path.isdir(args.input_ifs_seq):
                     filenames_seq = glob.glob(args.input_ifs_seq + "/*")
@@ -396,6 +462,7 @@ if __name__ == "__main__":
             "merge_guitars": args.merge_guitars,
             "events": event.get_bonus_notes_by_timestamp(eamxml.get_raw_xml(open(args.event_file, "rb").read())) if args.event_file else {},
             "musicdb": args.music_db,
+            "musicdb_csv": args.music_db_csv,
             "musicid": args.music_id,
             "input_split": {
                 "drum": {

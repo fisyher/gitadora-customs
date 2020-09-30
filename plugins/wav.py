@@ -6,12 +6,15 @@ import os
 import re
 import string
 
-import tmpfile
 import audio
-import wavbintool
 import helper
+import mdb
+import tmpfile
 
 import imageio_ffmpeg
+
+VOLUME_OVERHEAD_PERCENT = 75
+
 
 def percentage_to_db(percentage):
     if percentage == 0:
@@ -23,12 +26,12 @@ def percentage_to_db(percentage):
 def get_base_audio(input_foldername, bgm_filename, chart_data, no_bgm):
     if no_bgm:
         # Find last timestamp
-        last_timestamp = int(sorted(chart_data['timestamp'].keys(), key=lambda x: int(x))[-1])
+        last_timestamp = sorted([x['timestamp_ms'] for x in chart_data['beat_data']])[-1]
 
         # TODO: Find a better way to calculate the ending of the audio
         # Convert last timestamp into a duration and add 2 seconds in
         # case the final notes ring out for long
-        duration = ((last_timestamp) / 0x12c) + 2
+        duration = last_timestamp + 2 #((last_timestamp) / 0x12c) + 2
 
         # Create silent audio file
         output_audio = pydub.AudioSegment.silent(duration=duration * 1000)
@@ -67,92 +70,109 @@ def create_wav_from_chart(chart_data,
                           volume_auto=100,
                           ignore_auto=False):
 
+    volume_part = 50
+
     output_audio = get_base_audio(input_foldername, bgm_filename, chart_data, no_bgm)
     output_audio = make_silent(output_audio)
 
     if volume_bgm != 100:
         volume_bgm_db = percentage_to_db(volume_bgm)
-        if not volume_bgm_db:
+        if volume_bgm_db == 0:
             output_audio = make_silent(output_audio)
+
         elif volume_bgm_db != 0:
             output_audio += volume_bgm_db
 
     sound_files = {}
 
-    for timestamp_key in sorted(chart_data['timestamp'].keys(), key=lambda x: int(x)):
-        for cd in chart_data['timestamp'][timestamp_key]:
-            if cd['name'] != "note":
-                continue
+    for cd in chart_data['beat_data']:
+        if cd['name'] != "note":
+            continue
 
-            if ignore_auto and (cd['data'].get('auto_volume', 0) != 0 or cd['data'].get('auto_note', 0) != 0):
-                continue
+        if ignore_auto and (cd['data'].get('auto_volume', 0) != 0 or cd['data'].get('auto_note', 0) != 0):
+            continue
 
-            if 'volume' not in cd['data']:
-                cd['data']['volume'] = 127
+        if 'volume' not in cd['data']:
+            cd['data']['volume'] = 127
 
-            is_auto = cd['data'].get('auto_volume') == 1 and cd['data'].get('auto_note') != 0
-            if is_auto:
-                # Change 2/3 later if other games use different ratios
-                cd['data']['volume'] = int(round(cd['data']['volume'] * (2/3)))
+        is_auto = cd['data'].get('auto_volume') == 1 and cd['data'].get('auto_note') != 0
+        if is_auto:
+            # Change 2/3 later if other games use different ratios
+            cd['data']['volume'] = int(round(cd['data']['volume'] * (2/3)))
 
-            if 'pan' not in cd['data']:
-                cd['data']['pan'] = 64
+        if 'pan' not in cd['data']:
+            cd['data']['pan'] = 64
 
-            volume = 127  # 100% volume
-            pan = 64  # Center
-            wav_filename = "%04x.wav" % int(cd['data']['sound_id'])
+        volume = 127  # 100% volume
+        pan = 64  # Center
+        wav_filename = "%04x.wav" % int(cd['data']['sound_id'])
 
-            sound_key = "%04d_%03d_%03d" % (cd['data']['sound_id'],
-                                            cd['data']['volume'],
-                                            cd['data']['pan'])
+        sound_key = "%04d_%03d_%03d" % (cd['data']['sound_id'],
+                                        cd['data']['volume'],
+                                        cd['data']['pan'])
 
-            if sound_metadata and 'entries' in sound_metadata:
-                for sound_entry in sound_metadata['entries']:
-                    if int(sound_entry['sound_id']) == int(cd['data']['sound_id']):
-                        volume = sound_entry.get('volume', volume)
-                        pan = sound_entry.get('pan', pan)
+        if sound_metadata and 'entries' in sound_metadata:
+            for sound_entry in sound_metadata['entries']:
+                if int(sound_entry['sound_id']) == int(cd['data']['sound_id']):
+                    volume = sound_entry.get('volume', volume)
+                    pan = sound_entry.get('pan', pan)
 
-                        if 'flags' not in sound_entry or "NoFilename" not in sound_entry['flags']:
-                            wav_filename = sound_entry['filename']
+                    if 'flags' not in sound_entry or "NoFilename" not in sound_entry['flags']:
+                        wav_filename = sound_entry['filename']
 
-                        break
+                    wav_filename = "%s_%04x" % ("d" if chart_data['header']['game_type'] == 0 else "g", sound_entry['sound_id'])
 
-            if sound_key not in sound_files:
-                if cd['data'].get('volume'):
-                    volume = (cd['data']['volume'] / 127) * (volume / 127) * 127
+                    break
 
-                if cd['data'].get('pan'):
-                    pan = (cd['data']['pan'] - ((128 - pan) / 2)) / (128 / 2)
+        if sound_key not in sound_files:
+            if cd['data'].get('volume'):
+                volume = (cd['data']['volume'] / 127) * (volume / 127) * 127
+
+            if cd['data'].get('pan') != 64 or pan != 64:
+                print(cd['data'].get('pan'), pan)
+                exit(1)
+
+            if cd['data'].get('pan') != 64 or pan != 64:
+                print(cd['data'].get('pan'), pan)
+                exit(1)
+
+            if cd['data'].get('pan'):
+                pan = (pan - (128 / 2)) / (128 / 2)
+                pan = (cd['data']['pan'] - (128 / 2)) / (128 / 2)
+
+            else:
+                pan = (pan - (128 / 2)) / (128 / 2)
+
+            wav_filename = find_sound_filename(helper.getCaseInsensitivePath(os.path.join(input_foldername, wav_filename)))
+            if os.path.exists(wav_filename):
+                keysound = audio.get_audio_file(wav_filename)
+                keysound = keysound.pan(-pan)
+                db = percentage_to_db((volume / 127) * 100)
+                keysound += db
+
+                if is_auto:
+                    volume_key = volume_auto
+
                 else:
-                    pan = (pan - (128 / 2)) / (128 / 2)
+                    volume_key = volume_part
 
-                wav_filename = find_sound_filename(helper.getCaseInsensitivePath(os.path.join(input_foldername, wav_filename)))
-                if os.path.exists(wav_filename):
-                    keysound = audio.get_audio_file(wav_filename)
-                    keysound = keysound.pan(pan)
-                    db = percentage_to_db((volume / 127) * 100)
-                    keysound += db
+                if volume_key != 100:
+                    volume_db = percentage_to_db(volume_key)
+                    if not volume_db:
+                        keysound = make_silent(keysound)
+                    elif volume_db != 0:
+                        keysound += volume_db
 
-                    if is_auto:
-                        volume_key = volume_auto
-                    else:
-                        volume_key = volume_part
+                keysound += percentage_to_db(VOLUME_OVERHEAD_PERCENT)
 
-                    if volume_key != 100:
-                        volume_db = percentage_to_db(volume_key)
-                        if not volume_db:
-                            keysound = make_silent(keysound)
-                        elif volume_db != 0:
-                            keysound += volume_db
+                sound_files[sound_key] = keysound
+            else:
+                print("Couldn't find file: %s" % wav_filename)
 
-                    sound_files[sound_key] = keysound
-                else:
-                    print("Couldn't find file: %s" % wav_filename)
-
-            if sound_key in sound_files:
-                position = int(timestamp_key) / 0x12c
-                #print("Overlaying sound at %f" % position)
-                output_audio = output_audio.overlay(sound_files[sound_key], position=position * 1000)
+        if sound_key in sound_files:
+            position = cd['timestamp_ms'] #int(timestamp_key) / 0x12c
+            print("Overlaying sound at %f" % position)
+            output_audio = output_audio.overlay(sound_files[sound_key], position=position * 1000)
 
     return output_audio
 
@@ -187,8 +207,10 @@ def get_selected_difficulty(json_data, params):
 def get_sound_metadata(params, json_data, input_foldername, game_type):
     if 'sound_metadata' in json_data and game_type in json_data['sound_metadata']:
         return json_data['sound_metadata'][game_type]
+
     elif 'sound_metadata' in params:
         return params['sound_metadata']
+
     else:
         sound_metadata_filename = os.path.join(input_foldername, "metadata.json")
         if os.path.exists(sound_metadata_filename):
@@ -216,7 +238,7 @@ def get_sanitized_filename(filename, invalid_chars='<>:;\"\\/|?*'):
 
 
 def get_output_filename(json_data, chart_data, params):
-    output_filename = params['output']
+    output_filename = None
     ext = params.get('render_ext', "mp3")
     game_type = ['Drum', 'Guitar', 'Bass'][chart_data['header']['game_type']]
     title = chart_data['header'].get('title')
@@ -225,21 +247,21 @@ def get_output_filename(json_data, chart_data, params):
         title = title.strip()
 
     difficulty = ['NOV', 'BSC', 'ADV', 'EXT', 'MST'][chart_data['header']['difficulty']]
-    if params.get('render_auto_name', False) and title:
-        artist = chart_data['header'].get('artist')
-        if artist and artist.strip():
-            output_filename = "[%04d] %s - %s (%s %s).%s" % (json_data['musicid'],
-                                                             artist,
-                                                             title,
-                                                             game_type,
-                                                             difficulty,
-                                                             ext)
-        else:
-            output_filename = "[%04d] %s (%s %s).%s" % (json_data['musicid'],
-                                                        title,
-                                                        game_type,
-                                                        difficulty,
-                                                        ext)
+
+    artist = chart_data['header'].get('artist')
+    if artist and artist.strip():
+        output_filename = "[%04d] %s - %s (%s %s).%s" % (json_data['musicid'],
+                                                            artist,
+                                                            title,
+                                                            game_type,
+                                                            difficulty,
+                                                            ext)
+    else:
+        output_filename = "[%04d] %s (%s %s).%s" % (json_data['musicid'],
+                                                    title,
+                                                    game_type,
+                                                    difficulty,
+                                                    ext)
 
     if not output_filename:
         output_filename = "%s%04d_%s.%s" % (game_type[0],
@@ -253,15 +275,47 @@ def get_output_filename(json_data, chart_data, params):
 def get_tags(json_data, chart_data):
     tags = {}
 
-    if 'title' in chart_data['header']:
+    mdb_tags = mdb.get_song_info_from_csv("gitadora_music.csv", json_data['musicid'])
+
+    if 'title' in chart_data['header'] and chart_data['header']['title']:
         tags['title'] = chart_data['header']['title']
 
-    if 'artist' in chart_data['header']:
+    elif 'title' in mdb_tags and mdb_tags['title']:
+        tags['title'] = mdb_tags['title']
+
+    if 'artist' in chart_data['header'] and chart_data['header']['artist']:
         tags['artist'] = chart_data['header']['artist']
+
+    elif 'artist' in mdb_tags and mdb_tags['artist']:
+        tags['artist'] = mdb_tags['artist']
 
     game_type = ['Drum', 'Guitar', 'Bass'][chart_data['header']['game_type']]
     difficulty = ['NOV', 'BSC', 'ADV', 'EXT', 'MST'][chart_data['header']['difficulty']]
     tags['comments'] = "%s %s %s" % (json_data['musicid'], game_type, difficulty)
+    tags['track'] = json_data['musicid']
+
+    if 'gf_version' in mdb_tags:
+        tags['album'] = {
+            0: None,
+            20: "GITADORA",
+            21: "GITADORA Overdrive",
+            22: "GITADORA Tri-Boost",
+            23: "GITADORA Tri-Boost Re:EVOLVE",
+            24: "GITADORA Matixx",
+            25: "GITADORA EXCHAIN",
+            26: "GITADORA NEXTAGE",
+        }[mdb_tags['gf_version']]
+
+        tags['date'] = {
+            0: None,
+            20: 2013,
+            21: 2014,
+            22: 2015,
+            23: 2016,
+            24: 2017,
+            25: 2018,
+            26: 2019,
+        }[mdb_tags['gf_version']]
 
     return tags
 
@@ -269,6 +323,7 @@ def get_tags(json_data, chart_data):
 def get_bgm_filename(json_data, chart_data, input_foldername):
     if 'bgm' in json_data:
         bgm_filename = audio.merge_bgm(json_data['bgm'], input_foldername)
+
     else:
         # Get BGM filename based on game type (XG style)
         bgm_type = ['_gbk', 'd_bk', 'd__k'][chart_data['header']['game_type']]
@@ -314,12 +369,14 @@ def generate_wav_from_json(params, generate_output_filename=True):
         if game_type not in params['parts']:
             continue
 
-        if generate_output_filename:
-            output_filename = get_output_filename(json_data, chart_data, params)
-        else:
-            output_filename = params['output']
-
         tags = get_tags(json_data, chart_data)
+        if 'title' in tags:
+            chart_data['header']['title'] = tags['title']
+
+        if 'artist' in tags:
+            chart_data['header']['artist'] = tags['artist']
+
+        output_filename = get_output_filename(json_data, chart_data, params)
 
         if not bgm_filename:
             bgm_filename = get_bgm_filename(json_data, chart_data, input_foldername)
@@ -331,6 +388,9 @@ def generate_wav_from_json(params, generate_output_filename=True):
 
         print("Exporting %s..." % output_filename)
 
+        volume_bgm = params.get('render_volume_bgm', 100)
+        volume_part = params.get('render_volume', 100)
+
         bgms.append(create_wav_from_chart(chart_data,
                               input_foldername,
                               json_sound_metadata,
@@ -340,30 +400,44 @@ def generate_wav_from_json(params, generate_output_filename=True):
                               no_bgm=params.get('render_no_bgm', False),
                               ext=params.get('render_ext', "mp3"),
                               quality=params.get('render_quality', '320k'),
-                              volume_part=params.get('render_volume', 100),
-                              volume_bgm=params.get('render_volume_bgm', 100),
+                              volume_part=volume_part,
+                              volume_bgm=volume_bgm,
                               volume_auto=params.get('render_volume_auto', 100),
                               ignore_auto=params.get('render_ignore_auto', False)))
 
 
-    if not bgm_filename:
-        return
-
-    print("Saving to %s..." % output_filename)
-
-    if not params.get('render_no_bgm', False):
-        output_audio = audio.get_audio_file(bgm_filename)
-    else:
-        if len(bgms) == 0:
+        if not bgm_filename:
             return
 
-        output_audio = bgms[0]
-        bgms = bgms[1:]
+        bgm_filename = os.path.join(input_foldername, bgm_filename)
 
-    for bgm in bgms:
-        output_audio = output_audio.overlay(bgm)
+        print("Saving to %s..." % output_filename)
 
-    output_audio.export(params['output'], format=params.get('render_ext', "mp3"), tags={}, bitrate=params.get('render_quality', '320k'))
+        if not params.get('render_no_bgm', False):
+            output_audio = audio.get_audio_file(bgm_filename)
+
+        else:
+            if len(bgms) == 0:
+                return
+
+            output_audio = bgms[0]
+            bgms = bgms[1:]
+
+        if volume_bgm != 100:
+            volume_bgm_db = percentage_to_db(volume_bgm)
+
+            if volume_bgm_db == 0:
+                output_audio = make_silent(output_audio)
+
+            elif volume_bgm_db != 0:
+                output_audio += volume_bgm_db
+
+        output_audio += percentage_to_db(VOLUME_OVERHEAD_PERCENT)
+
+        for bgm in bgms:
+            output_audio = output_audio.overlay(bgm)
+
+        output_audio.export(output_filename, format=params.get('render_ext', "mp3"), tags=tags, bitrate=params.get('render_quality', '320k'))
 
 class WavFormat:
     @staticmethod

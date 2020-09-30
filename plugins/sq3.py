@@ -1,24 +1,16 @@
 import copy
 import json
 import os
-import shutil
 import struct
-import threading
+
+import eamxml
+
 from lxml import etree
 from lxml.builder import E
-import uuid
 
-import helper
-import mdb
-import eamxml
-import audio
-import vas3tool
-import wavbintool
-import tmpfile
+from plugins.sq import generate_json_from_data
 
-import plugins.wav as wav
-
-USE_THREADS = True
+VALID_METACOMMANDS = ['startpos', 'endpos', 'baron', 'baroff', 'measure', 'beat', 'unk0c', 'bpm', 'barinfo']
 
 EVENT_ID_MAP = {
     0x01: "bpm",
@@ -36,33 +28,6 @@ EVENT_ID_MAP = {
 }
 
 EVENT_ID_REVERSE = {EVENT_ID_MAP[k]: k for k in EVENT_ID_MAP}
-
-drum_note_map = {
-    0x00: "Hi-hat (left Blue)",
-    0x01: "Snare (yellow)",
-    0x02: "Bass pedal",
-    0x03: "High tom (Green)",
-    0x04: "Low tom (Red)",
-    0x05: "Right cymbal (Right Blue)",
-    0x06: "Left cymbal (Left Pink)",
-    0x07: "Floor tom (Orange)",
-    0x08: "Left pedal",
-    0xff: "Auto"
-}
-
-DIFFICULTY_LEVELS_MAP = {
-    0x00: "NOV",
-    0x01: "BSC",
-    0x02: "ADV",
-    0x03: "EXT",
-    0x04: "MST"
-}
-
-GAMES_MAP = {
-    0x00: "Drums",
-    0x01: "Guitar",
-    0x03: "Bass"
-}
 
 NOTE_MAPPING = {
     'drum': {
@@ -246,322 +211,7 @@ REVERSE_NOTE_MAPPING = {
 }
 
 
-def combine_metadata_with_chart(metadata, chart):
-    chart_combined = copy.deepcopy(chart)
-
-    for timestamp_key in sorted(metadata['timestamp'].keys(), key=lambda x: int(x)):
-        if timestamp_key not in chart_combined['timestamp']:
-            chart_combined['timestamp'][timestamp_key] = []
-
-        for d in metadata['timestamp'][timestamp_key]:
-            chart_combined['timestamp'][timestamp_key].append(d)
-
-    return chart_combined
-
-
-def get_timesigs_by_timestamp(chart_combined):
-    time_signatures_by_timestamp = {
-        0: {
-            'numerator': 4,
-            'denominator': 4,
-            'timesig': 1,
-        }
-    }
-
-    for k in sorted(chart_combined['timestamp'].keys(), key=lambda x: int(x)):
-        for beat in chart_combined['timestamp'][k]:
-            if beat['name'] == "barinfo":
-                time_signatures_by_timestamp[k] = {
-                    'numerator': beat['data']['numerator'],
-                    'denominator': beat['data']['denominator'],
-                    'timesig': beat['data']['numerator'] / beat['data']['denominator']
-                }
-
-    return time_signatures_by_timestamp
-
-
-def generate_timesigs_for_events(chart):
-    time_signatures_by_timestamp = get_timesigs_by_timestamp(chart)
-
-    # Generate a time_signature field for everything based on timestamp
-    for k in sorted(chart['timestamp'].keys(), key=lambda x: int(x)):
-        idx = [x for x in sorted(time_signatures_by_timestamp.keys(),
-                                 key=lambda x: int(x)) if int(x) <= int(k)][-1]
-        time_signature = time_signatures_by_timestamp[idx]
-
-        for idx in range(len(chart['timestamp'][k])):
-            chart['timestamp'][k][idx]['time_signature'] = time_signature
-
-    return chart
-
-
-def generate_beats_by_timestamp(chart):
-    # Generate beats based on measures and line markers
-    current_timesig = {'numerator': 4, 'denominator': 4}
-    current_measures = 0
-    current_beats = 0
-    beats_by_timestamp = {}
-
-    found_first = False
-
-    hold_timesig = None
-    for timestamp_key in sorted(chart['timestamp'].keys(), key=lambda x: int(x)):
-        for beat in chart['timestamp'][timestamp_key]:
-            name = beat['name']
-            timestamp = int(timestamp_key)
-
-            if not found_first:
-                current_timesig = beat['time_signature']
-                hold_timesig = current_timesig
-            else:
-                hold_timesig = beat['time_signature']
-
-            if name == "measure":
-                if found_first:
-                    current_beats = 0
-                    current_measures += (1920 // current_timesig['denominator']) * current_timesig['numerator']
-
-                found_first = True
-
-            if name == "beat":
-                current_beats += (1920 // current_timesig['denominator'])
-
-            if name in ["measure", "beat"]:
-                last_beat = current_measures + current_beats
-                beats_by_timestamp[timestamp] = last_beat
-
-        current_timesig = hold_timesig
-
-    return beats_by_timestamp
-
-
-def generate_beats_for_events(chart):
-    beats_by_timestamp = generate_beats_by_timestamp(chart)
-
-    # Set base beat for every event at timestamp
-    last_timestamp = 0
-    for timestamp_key in sorted(chart['timestamp'].keys(), key=lambda x: int(x)):
-        for beat in chart['timestamp'][timestamp_key]:
-            name = beat['name']
-            timestamp = int(timestamp_key)
-
-            if timestamp in beats_by_timestamp:
-                last_timestamp = timestamp
-                break
-
-        for beat in chart['timestamp'][timestamp_key]:
-            name = beat['name']
-            beat['beat'] = beats_by_timestamp[last_timestamp]
-
-    last_timestamp = 0
-    cur_bpm = 0
-    for timestamp_key in sorted(chart['timestamp'].keys(), key=lambda x: int(x)):
-        for beat in chart['timestamp'][timestamp_key]:
-            name = beat['name']
-            timestamp = int(timestamp_key)
-
-            if timestamp in beats_by_timestamp:
-                last_timestamp = timestamp
-                break
-
-        for beat in chart['timestamp'][timestamp_key]:
-            if beat['name'] == "bpm":
-                cur_bpm = beat['data']['bpm']
-                break
-
-        for beat in chart['timestamp'][timestamp_key]:
-            name = beat['name']
-            timestamp = int(timestamp_key)
-
-            keys = list(sorted(beats_by_timestamp.keys(), key=lambda x: int(x))) + [0]
-            next_timestamp = keys[keys.index(last_timestamp) + 1]
-            if timestamp not in beats_by_timestamp:
-                diff = int(timestamp_key) - last_timestamp
-                tf = ((diff / 300) * (cur_bpm / 60)) * (1920 // beat['time_signature']['denominator'])
-
-                beat['beat'] = beat['beat'] + int(tf)
-
-    return chart
-
-
-def generate_metadata_fields(metadata, chart):
-    # Generate and add any important data that isn't guaranteed
-    # to be there (namely, beat markers for SQ3)
-
-    # TODO: This code is slow
-
-    # I know they're read, but I'm curious if these are actually
-    # ever used in game or not. The required info can be calculated
-    # using the time signature and deriving it from the value 1920.
-    # For example 0x1e0 (480) is 1920 / (1 << (4 / 2)) where 4 is
-    # the denominator of the time signature.
-    if 'beat_division' not in metadata['header']:
-        metadata['header']['beat_division'] = 480  # 4/4 time signature
-
-    if 'time_division' not in metadata['header']:
-        metadata['header']['time_division'] = 300
-
-    chart_combined = combine_metadata_with_chart(metadata, chart)
-    chart_combined = generate_timesigs_for_events(chart_combined)
-    chart_combined = generate_beats_for_events(chart_combined)
-
-    return chart_combined
-
-
-def get_note_counts_from_json(chart, part):
-    note_counts = {}
-
-    total_notes = 0
-    for k in chart['timestamp']:
-        for event in chart['timestamp'][k]:
-            if 'data' not in event:
-                continue
-
-            is_note = event['name'] == "note"
-            is_auto = event['data'].get('note') == "auto"
-            is_auto_note = event['data'].get('auto_note') == 1
-
-            if is_note and not is_auto and not is_auto_note:
-                # Drum and guitar must be calculated separately because
-                # Guitar needs R G B Y P Open calculated by bit flag may be the most accurate
-
-                if part == "drum":
-                    if event['data']['note'] not in note_counts:
-                        note_counts[event['data']['note']] = 0
-                    note_counts[event['data']['note']] += 1
-                    total_notes += 1
-                elif part in ['guitar', 'bass']:
-                    n = event['data']['note'][2:]
-
-                    if n == "open":
-                        if n not in note_counts:
-                            note_counts[n] = 0
-                        note_counts[n] += 1
-                        total_notes += 1
-                    else:
-                        for note in [c for c in n if c != 'x']:
-                            if note not in note_counts:
-                                note_counts[note] = 0
-                            note_counts[note] += 1
-                        total_notes += 1
-
-    return {'total': total_notes, 'notes': note_counts}
-
-
-def create_preview(json_sq3, params, part):
-    print("Creating preview file", part)
-
-    running_threads = []
-    output_folder = params['output']
-
-    filename = os.path.join(output_folder,
-                            "i%04d%s.bin" % (json_sq3['musicid'], part))
-
-    if not os.path.exists(os.path.join(params['sound_folder'], json_sq3['preview'])):
-        return []
-
-    if USE_THREADS:
-        bgm_thread = threading.Thread(target=wavbintool.parse_wav,
-                                      args=(os.path.join(params['sound_folder'],
-                                            json_sq3['preview']),
-                                            filename))
-        bgm_thread.start()
-        running_threads.append(bgm_thread)
-    else:
-        wavbintool.parse_wav(os.path.join(params['sound_folder'],
-                             json_sq3['preview']),
-                             filename)
-
-    return running_threads
-
-
-def create_bgm_render(json_sq3, params, target_parts, output_bgm_filename):
-    def _create_bgm_render(params_bgm, target_parts, output_bgm_filename):
-        wav.generate_wav_from_json(params_bgm, generate_output_filename=False)
-        wavbintool.parse_wav(params_bgm['output'], output_bgm_filename)
-
-    print("Creating BGM render", target_parts)
-
-    params_bgm = copy.deepcopy(params)
-    params_bgm['render_ext'] = "wav"
-    params_bgm['output'] = tmpfile.mkstemp(suffix="." + params_bgm.get('render_ext', 'wav'))
-
-    if os.path.exists(params_bgm['output']):
-        os.unlink(params_bgm['output'])
-
-    if 'guitar' in target_parts or 'bass' in target_parts or 'open' in target_parts:
-        params_bgm['render_ignore_auto'] = True
-
-    params_bgm['parts'] = target_parts
-    params_bgm['difficulty'] = ['max']
-
-    running_threads = []
-
-    if USE_THREADS:
-        bgm_thread = threading.Thread(target=_create_bgm_render,
-                                      args=(params_bgm,
-                                            target_parts,
-                                            output_bgm_filename))
-        bgm_thread.start()
-        running_threads.append(bgm_thread)
-    else:
-        _create_bgm_render(params_bgm, target_parts, output_bgm_filename)
-
-    return running_threads
-
-
-def create_bgm(json_sq3, params, output_bgm_filename):
-    def _create_bgm(bgm_filename, sound_folder, output_bgm_filename):
-        # Create BGM file render
-        merged_wav_filename = audio.merge_bgm(bgm_filename, sound_folder)
-        wavbintool.parse_wav(merged_wav_filename, output_bgm_filename)
-
-    print("Creating BGM file")
-
-    running_threads = []
-
-    if USE_THREADS:
-        bgm_thread = threading.Thread(target=_create_bgm,
-                                      args=(json_sq3['bgm'],
-                                            params['sound_folder'],
-                                            output_bgm_filename))
-        bgm_thread.start()
-        running_threads.append(bgm_thread)
-    else:
-        _create_bgm(json_sq3['bgm'], params['sound_folder'], output_bgm_filename)
-
-    return running_threads
-
-
-def create_va3(json_sq3, params, part):
-    print("Creating VA3 archive")
-
-    running_threads = []
-
-    if part not in json_sq3['sound_metadata']:
-        return []
-
-    output_folder = params['output']
-
-    va3_filename = "spu%04d%s.va3" % (json_sq3['musicid'], part[0])
-    output_filename = os.path.join(output_folder, va3_filename)
-
-    if USE_THREADS:
-        va3_thread = threading.Thread(target=vas3tool.write_vas3,
-                                      args=(params['sound_folder'],
-                                            output_filename,
-                                            json_sq3['sound_metadata'][part]))
-        va3_thread.start()
-        running_threads.append(va3_thread)
-    else:
-        vas3tool.write_vas3(params['sound_folder'],
-                            output_filename,
-                            json_sq3['sound_metadata'][part])
-
-    return running_threads
-
-
-def create_event_file(json_sq3, params, charts):
+def create_event_file(params, charts):
     output_folder = params['output']
 
     # Gather bonus note info
@@ -569,23 +219,22 @@ def create_event_file(json_sq3, params, charts):
     # easier to handle the data for multiple difficulties
     bonus_notes = {}
     for chart in charts:
-        for x in chart['timestamp']:
-            for x2 in chart['timestamp'][x]:
-                if not (x2['name'] == "note" and x2['data'].get('bonus_note', 0) == 1):
-                    continue
+        for x in sorted(chart['beat_data'], key=lambda x: int(x['timestamp'])):
+            if not (x['name'] == "note" and x['data'].get('bonus_note', 0) == 1):
+                continue
 
-                if x2['beat'] not in bonus_notes:
-                    bonus_notes[x2['beat']] = {}
+            if x['timestamp'] not in bonus_notes:
+                bonus_notes[x['timestamp']] = {}
 
-                gamelevel = 1 << chart['header']['difficulty']
-                if x2['data']['sound_id'] in bonus_notes[x2['beat']]:
-                    gamelevel |= bonus_notes[x2['beat']][x2['data']['sound_id']]['gamelevel']
+            gamelevel = 1 << chart['header']['difficulty']
+            if x['data']['sound_id'] in bonus_notes[x['timestamp']]:
+                gamelevel |= bonus_notes[x['timestamp']][x['data']['sound_id']]['gamelevel']
 
-                bonus_notes[x2['beat']][x2['data']['sound_id']] = {
-                    'sound_id': x2['data']['sound_id'],
-                    'time': x2['beat'],
-                    'gamelevel': gamelevel,
-                }
+            bonus_notes[x['timestamp']][x['data']['sound_id']] = {
+                'sound_id': x['data']['sound_id'],
+                'time': x['timestamp'],
+                'gamelevel': gamelevel,
+            }
 
     # Convert the dictionary into a flat list
     bonus_notes_flat = []
@@ -597,7 +246,7 @@ def create_event_file(json_sq3, params, charts):
     event_xml = E.xg_eventdata(
         E.version("2", __type="u32"),
         E.music(
-            E.musicid("{}".format(json_sq3['musicid']), __type="u32"),
+            E.musicid("{}".format(params['musicid']), __type="u32"),
             E.game(
                 E.gametype("2", __type="u32"),  # Bass?
                 E.events(
@@ -622,624 +271,392 @@ def create_event_file(json_sq3, params, charts):
 
     # Write binary XML event file
     event_xml_text = etree.tostring(event_xml, pretty_print=True).decode('utf-8')
-    event_xml_filename = os.path.join(output_folder, "event%04d.ev2" % (json_sq3['musicid']))
+    event_xml_filename = os.path.join(output_folder, "event%04d.ev2" % (params['musicid']))
 
     with open(event_xml_filename, "wb") as f:
         f.write(eamxml.get_binxml(event_xml_text))
 
 
-def get_package_unique_identifier(filename):
-    unique_id = None
+def generate_sq3_from_json(params):
+    def build_command(event, game_type):
+        output = bytearray(0x40)
 
-    if os.path.exists(filename):
-        with open(filename, "r", encoding="utf-8") as f:
-            package_data = json.load(f)
+        output[0x00:0x04] = struct.pack("<I", event['timestamp'])
+        output[0x04] = EVENT_ID_REVERSE[event['name']] & 0xff
 
-            unique_id = package_data.get('unique_id', None)
+        if event['name'] == "bpm":
+            if event['data']['bpm'] < 1:
+                event['data']['bpm'] = 1
 
-    if unique_id is None:
-        # Generate a unique id
-        unique_id = str(uuid.uuid4()).replace("-","")
+            elif event['data']['bpm'] > 60000000:
+                event['data']['bpm'] = 60000000
 
-    return unique_id
+            output[0x34:0x38] = struct.pack("<I", int(round(60000000 / event['data']['bpm'])))
 
+        elif event['name'] == "barinfo":
+            output[0x34] = event['data']['numerator'] & 0xff
 
-def create_package_file(json_sq3, params, song_metadata_drum, song_metadata_guitar, parts):
-    output_folder = params['output']
+            denominator = 1 << (event['data']['denominator'].bit_length() - 1)
+            if denominator != event['data']['denominator']:
+                raise Exception("ERROR: The time signature denominator must be divisible by 2."
+                                "Found {}".format(event['data']['denominator']))
 
-    unique_id = get_package_unique_identifier(os.path.join(output_folder, "package.json"))
+            output[0x35] = (event['data']['denominator'].bit_length() - 1) & 0xff
 
-    basic_levels = {
-        "novice": 0,
-        "basic": 0,
-        "advanced": 0,
-        "extreme": 0,
-        "master": 0
-    }
+        elif event['name'] == "chipstart":
+            if 'unk' in event['data']:
+                output[0x14:0x18] = struct.pack("<I", event['data']['unk'])
 
-    if os.path.exists(os.path.join(output_folder, "package.json")):
-        j = json.load(open(os.path.join(output_folder, "package.json"), "r", encoding="utf-8"))
+            else:
+                output[0x14:0x18] = struct.pack("<I", 0x16c)
 
-        if not song_metadata_drum:
-            levels = j.get('difficulty', {}).get('drum', basic_levels)
-            notes = j.get('notes', {}).get('drum', {})
+        elif event['name'] == "note":
+            if event['data']['note'] not in REVERSE_NOTE_MAPPING:
+                # Set all unknown events to auto play
+                REVERSE_NOTE_MAPPING[event['data']['note']] = 0xff
 
-            if notes:
-                parts.append("drum")
+            if 'hold_duration' in event['data']:
+                output[0x08:0x0c] = struct.pack("<I", event['data']['hold_duration'])
 
-            song_metadata_drum = {
-                'difficulty_levels': {
-                    'drum': levels
-                },
-                'note_counts': {
-                    'drum': notes
-                },
-            }
+            if 'unk' in event['data']:
+                output[0x14:0x18] = struct.pack("<I", event['data']['unk'])
 
-        if not song_metadata_guitar:
-            guitar_levels = j.get('difficulty', {}).get('guitar', basic_levels)
-            bass_levels = j.get('difficulty', {}).get('bass', basic_levels)
-            open_levels = j.get('difficulty', {}).get('open', basic_levels)
+            else:
+                output[0x14:0x18] = struct.pack("<I", 0x16c)
 
-            guitar_notes = j.get('notes', {}).get('guitar', {})
-            bass_notes = j.get('notes', {}).get('bass', {})
-            open_notes = j.get('notes', {}).get('open', {})
+            if 'sound_id' in event['data']:
+                output[0x20:0x24] = struct.pack("<I", event['data']['sound_id'])
 
-            if guitar_notes or bass_notes or open_notes:
-                parts.append("guitar")
+            if game_type != 0:
+                if 'note_length' in event['data']:
+                    output[0x24:0x28] = struct.pack("<I", event['data']['note_length'])
 
-            song_metadata_guitar = {
-                'difficulty_levels': {
-                    'guitar': guitar_levels,
-                    'bass': bass_levels,
-                    'open': open_levels,
-                },
-                'note_counts': {
-                    'guitar': guitar_notes,
-                    'bass': bass_notes,
-                    'open': open_notes,
-                },
-            }
+                else:
+                    output[0x24:0x28] = struct.pack("<I", 0x40)
 
-    song_metadata = song_metadata_drum if song_metadata_drum else song_metadata_guitar
+            if 'volume' in event['data']:
+                output[0x2d] = event['data']['volume'] & 0xff
 
-    difficulties = {
-        'drum': song_metadata_drum.get("difficulty_levels", {}).get('drum', basic_levels),
-        'guitar': song_metadata_guitar.get("difficulty_levels", {}).get('guitar', basic_levels),
-        'bass': song_metadata_guitar.get("difficulty_levels", {}).get('bass', basic_levels),
-        'open': song_metadata_guitar.get("difficulty_levels", {}).get('open', basic_levels),
-    }
+            if 'auto_volume' in event['data']:
+                output[0x2e] = event['data']['auto_volume'] & 0xff
 
-    notes = {
-        'drum': song_metadata_drum.get("note_counts", {}).get('drum', {}),
-        'guitar': song_metadata_guitar.get("note_counts", {}).get('guitar', {}),
-        'bass': song_metadata_guitar.get("note_counts", {}).get('bass', {}),
-        'open': song_metadata_guitar.get("note_counts", {}).get('open', {}),
-    }
+            if 'note' in event['data']:
+                output[0x30] = REVERSE_NOTE_MAPPING[event['data']['note']] & 0xff
 
-    package_info = {
-        "unique_id": unique_id,
-        "artist": song_metadata.get("artist_name", ""),
-        "artist_ascii": helper.romanize(song_metadata.get("artist_name", "")),
-        "title": song_metadata.get("song_title", ""),
-        "title_ascii": helper.romanize(song_metadata.get("song_title", "")),
-        "bpm": song_metadata.get("bpm", 0),
-        "bpm2": song_metadata.get("bpm2", 0),
-        "difficulty": difficulties,
-        "files": {
-            "event": "event%04d.ev2" % (json_sq3['musicid']),
-            "bgm": {
-                "___k": "bgm%04d___k.bin" % (json_sq3['musicid']),
-                "__bk": "bgm%04d__bk.bin" % (json_sq3['musicid']),
-                "_gbk": "bgm%04d_gbk.bin" % (json_sq3['musicid']),
-                "d__k": "bgm%04dd__k.bin" % (json_sq3['musicid']),
-                "d_bk": "bgm%04dd_bk.bin" % (json_sq3['musicid']),
-            }
-        },
-        "graphics": {
-            "jacket": song_metadata.get("pre_image", "pre.jpg"),
-        },
-        "notes": notes
-    }
+            if 'wail_misc' in event['data']:
+                output[0x31] = event['data']['wail_misc'] & 0xff
 
-    if json_sq3['musicid'] != None:
-        package_info.update({
-            "real_song": 1,
-            "music_id": json_sq3['musicid'],
-        })
+            if 'guitar_special' in event['data']:
+                output[0x32] = event['data']['guitar_special'] & 0xff
 
-    if 'drum' in parts:
-        package_info['files']['drum'] = {
-            "seq": "d%04d.sq3" % (json_sq3['musicid']),
-            "sound": "spu%04dd.va3" % (json_sq3['musicid']),
-            "preview": "i%04ddm.bin" % (json_sq3['musicid']),
-        }
+            if 'auto_note' in event['data']:
+                output[0x34] = event['data']['auto_note'] & 0xff
 
-    if 'guitar' in parts or 'bass' in parts or 'open' in parts:
-        package_info['files']['guitar'] = {
-            "seq": "g%04d.sq3" % (json_sq3['musicid']),
-            "sound": "spu%04dg.va3" % (json_sq3['musicid']),
-            "preview": "i%04dgf.bin" % (json_sq3['musicid']),
-        }
+            if event['data'].get('note') == "auto":
+                output[0x34] = 1  # Auto note
+                output[0x2e] = 1  # Auto volume
 
-    with open(os.path.join(output_folder, "package.json"), "w", encoding="utf-8") as f:
-        json.dump(package_info, f, ensure_ascii=False, indent=4, separators=(', ', ': '))
+        return output
 
 
-def generate_song_metadata(charts):
-    note_counts = {
-        'drum': {},
-        'guitar': {},
-        'bass': {}
-    }
+    def contains_command(chart, command):
+        for event in chart:
+            if event['name'] == command:
+                return True
 
-    artist_name = ""
-    song_title = ""
-    bpm = 0
-
-    difficulty_levels = {
-        "drum": {
-            "novice": 0,
-            "basic": 0,
-            "advanced": 0,
-            "extreme": 0,
-            "master": 0
-        },
-        "guitar": {
-            "novice": 0,
-            "basic": 0,
-            "advanced": 0,
-            "extreme": 0,
-            "master": 0
-        },
-        "bass": {
-            "novice": 0,
-            "basic": 0,
-            "advanced": 0,
-            "extreme": 0,
-            "master": 0
-        }
-    }
-
-    pre_image = "jacket.png"
-
-    for x in charts:
-        game_type = ["drum", "guitar", "bass"][x['header']['game_type']]
-        difficulty = ['nov', 'bsc', 'adv', 'ext', 'mst'][x['header']['difficulty']]
-        note_counts[game_type][difficulty] = get_note_counts_from_json(x, game_type)
-
-        # These 4 lines are incorrect, header does not contain any of these data as expected
-        # they are in same level as header, but changing these lines may break other functions
-        #artist_name = x.get('header', {}).get('artist', "")
-        #song_title = x.get('header', {}).get('title', "")
-        #bpm = x.get('header', {}).get('bpm', 0)
-        #bpm2 = x.get('header', {}).get('bpm2', 0)
-        artist_name = x.get('artist', "")
-        song_title = x.get('title', "")
-        bpm = x.get('bpm', 0)
-        bpm2 = x.get('bpm2', 0)
-
-        if 'preimage' in x and x['preimage']:
-            pre_image = x['preimage']
-
-        #Also in correct
-        #if 'level' in x['header']:
-        if 'level' in x:
-            levels = ['novice', 'basic', 'advanced', 'extreme', 'master']
-            difficulty = levels[x['header']['difficulty']]
-            #difficulty_levels[game_type][difficulty] = int(x['header']['level'][game_type])
-            difficulty_levels[game_type][difficulty] = int(x['level'])
-
-    return {
-        "note_counts": note_counts,
-        "artist_name": artist_name,
-        "song_title": song_title,
-        "bpm": bpm,
-        "bpm2": bpm2,
-        "difficulty_levels": difficulty_levels,
-        "pre_image": pre_image
-    }
+        return False
 
 
-def create_sq3_file(json_sq3, params, target_parts, charts_data):
-    output_folder = params['output']
+    def calculate_last_measure_duration(chart):
+        measure_timestamps = []
 
-    # Create actual SQ3 data
-    archive_size = 0x20 + (0x10 * len(charts_data)) + sum([len(x['data']) for x in charts_data])
+        for event in chart:
+            if event['name'] == "measure":
+                measure_timestamps.append(event['timestamp'])
 
-    output_data = [0] * 0x20
-    output_data[0x00:0x04] = b'SEQP'
-    output_data[0x04] = 0x01
-    output_data[0x06] = 0x01
-    output_data[0x0a] = 0x03
-    output_data[0x0c:0x10] = struct.pack("<I", archive_size)
-    output_data[0x10:0x14] = struct.pack("<I", 0x20)  # Size of header
-    output_data[0x14:0x18] = struct.pack("<I", json_sq3['musicid'])
-    output_data[0x18:0x1c] = struct.pack("<I", len(charts_data))
-    output_data[0x1c:0x20] = struct.pack("<I", 0x12345678)
+        if len(measure_timestamps) < 2:
+            return 0x100
 
-    output_data = bytearray(output_data)
-    for chart_data in charts_data:
-        data = chart_data['data']
-
-        file_header = [0] * 0x10
-        file_header[0x00:0x04] = struct.pack("<I", len(data) + 0x10)
-        file_header[0x04] = 0x10
-
-        output_data += bytearray(file_header)
-        output_data += data
-
-    if 'drum' in target_parts:
-        output_filename = 'd%04d.sq3' % (json_sq3['musicid'])
-    elif 'guitar' in target_parts or 'bass' in target_parts:
-        output_filename = 'g%04d.sq3' % (json_sq3['musicid'])
-    else:
-        raise Exception("Unknown chart type")
-
-    with open(os.path.join(output_folder, output_filename), "wb") as f:
-        f.write(output_data)
+        return measure_timestamps[-1] - measure_timestamps[-2]
 
 
-def create_sound_files(json_sq3, params, target_parts):
-    running_threads = []
-    output_folder = params['output']
+    def create_final_sq3_chart(params, charts_data):
+        # Create actual SQ3 data
+        archive_size = 0x20 + (0x30 * len(charts_data)) + sum([len(x['data']) for x in charts_data])
 
-    # Make audio files here if sound_metadata exists?
-    if 'sound_metadata' in json_sq3:
-        if 'sound_folder' not in params:
-            print("A sound folder must be specified using --sound-folder for this operation")
-            exit(1)
+        output_data = bytearray(0x20)
+        output_data[0x00:0x04] = b'SEQP'
+        output_data[0x04] = 0x01
+        output_data[0x06] = 0x01
+        output_data[0x0a] = 0x03
+        output_data[0x0c:0x10] = struct.pack("<I", archive_size)
+        output_data[0x10:0x14] = struct.pack("<I", 0x20)  # Size of header
+        output_data[0x14:0x18] = struct.pack("<I", params['musicid'])
+        output_data[0x18:0x1c] = struct.pack("<I", len(charts_data))
+        output_data[0x1c:0x20] = struct.pack("<I", 0x12345678)
 
-        # Create sound archives
-        output_bgm_filename = os.path.join(output_folder, 'bgm%04d___k.bin' % (json_sq3['musicid']))
-        running_threads += create_bgm(json_sq3, params, output_bgm_filename)
+        output_data = bytearray(output_data)
+        for chart_data in charts_data:
+            data = chart_data['data']
 
-        if params.get('generate_bgms', False):
-            if 'guitar' in target_parts or 'bass' in target_parts:
-                running_threads += create_bgm_render(json_sq3, params, ['bass'], os.path.join(output_folder, 'bgm%04d__bk.bin' % (json_sq3['musicid'])))
-                running_threads += create_bgm_render(json_sq3, params, ['guitar', 'bass', 'open'], os.path.join(output_folder, 'bgm%04d_gbk.bin' % (json_sq3['musicid'])))
+            sq3t_data = bytearray(0x20)
+            sq3t_data[0x00:0x04] = b'SQ3T'
+            sq3t_data[0x06] = 0x03  # SQ3 flag
+            sq3t_data[0x0a] = 0x03  # SQ3 flag 2?
+            sq3t_data[0x0c:0x10] = struct.pack("<I", 0x20)  # Size of header
+            sq3t_data[0x10:0x14] = struct.pack("<I", len(data) // 0x40)  # Number of events
+            sq3t_data[0x14] = chart_data['header'].get('unk_sys', 0) & 0xff
+            sq3t_data[0x15] = chart_data['header']['is_metadata'] & 0xff
+            sq3t_data[0x16] = chart_data['header']['difficulty'] & 0xff
+            sq3t_data[0x17] = chart_data['header']['game_type'] & 0xff
+            sq3t_data[0x18:0x1a] = struct.pack("<H", chart_data['header'].get('time_division', 300))
+            sq3t_data[0x1a:0x1c] = struct.pack("<H", chart_data['header'].get('beat_division', 480))
+            sq3t_data[0x1c:0x20] = struct.pack("<I", 0x40)  # Size of each entry
 
-            if 'drum' in target_parts:
-                running_threads += create_bgm_render(json_sq3, params, ['drum'], os.path.join(output_folder, 'bgm%04dd__k.bin' % (json_sq3['musicid'])))
+            if chart_data['header']['is_metadata'] != 0:
+                sq3t_data[0x15] = 0x01
+                sq3t_data[0x16] = 0x01
 
-            running_threads += create_bgm_render(json_sq3, params, ['drum', 'bass'], os.path.join(output_folder, 'bgm%04dd_bk.bin' % (json_sq3['musicid'])))
+            file_header = bytearray(0x10)
+            file_header[0x00:0x04] = struct.pack("<I", len(data) + 0x30)
+            file_header[0x04] = 0x10
 
-        if 'drum' in target_parts:
-            running_threads += create_va3(json_sq3, params, 'drum')
+            output_data += file_header
+            output_data += sq3t_data
+            output_data += data
 
-        elif 'guitar' in target_parts or 'bass' in target_parts:
-            running_threads += create_va3(json_sq3, params, 'guitar')
+        return output_data
 
-        # Create preview files
-        if json_sq3.get('preview', None):
-            running_threads += create_preview(json_sq3, params, 'dm')
-            running_threads += create_preview(json_sq3, params, 'gf')
 
-        if USE_THREADS:
-            # Wait for threads to finish so the BGMs can be copied as required
-            for thread in running_threads:
-                thread.join()
+    def generate_metadata_chart(chart):
+        output = bytearray()
 
-        # Create missing BGMs if needed
-        all_bgm_filenames = [
-            os.path.join(output_folder, 'bgm%04d___k.bin' % (json_sq3['musicid'])),
-            os.path.join(output_folder, 'bgm%04d__bk.bin' % (json_sq3['musicid'])),
-            os.path.join(output_folder, 'bgm%04d_gbk.bin' % (json_sq3['musicid'])),
-            os.path.join(output_folder, 'bgm%04dd__k.bin' % (json_sq3['musicid'])),
-            os.path.join(output_folder, 'bgm%04dd_bk.bin' % (json_sq3['musicid'])),
-        ]
+        global last_beat, beat_by_timestamp
+        last_beat = 0
 
-        for alt_bgm_filename in all_bgm_filenames:
-            if os.path.exists(alt_bgm_filename):
+        if not contains_command(chart['beat_data'], 'startpos'):
+            output += build_command({
+                'name': 'startpos',
+                'timestamp': 0,
+                'timestamp_ms': 0,
+                'data': {},
+            }, 0)
+
+        if not contains_command(chart['beat_data'], 'baron'):
+            output += build_command({
+                'name': 'baron',
+                'timestamp': 0,
+                'timestamp_ms': 0,
+                'data': {},
+            }, 0)
+
+        for event in sorted(chart['beat_data'], key=lambda x:x['timestamp']):
+            if event['name'] not in EVENT_ID_REVERSE:
+                print("Couldn't find %s in EVENT_ID_REVERSE" % event['name'])
+                exit(1)
+
+            if event['name'] not in VALID_METACOMMANDS:
                 continue
 
-            if not os.path.exists(alt_bgm_filename):
-                shutil.copy(output_bgm_filename, alt_bgm_filename)
+            output += build_command(event, chart['header']['game_type'])
 
-    if USE_THREADS:
-        for thread in running_threads:
-            thread.join()
+        last_measure_duration = calculate_last_measure_duration(chart['beat_data'])
+        last_event = sorted(chart['beat_data'], key=lambda x:x['timestamp'])[-1]
+        last_timestamp = last_event['timestamp'] + last_measure_duration
+
+        if not contains_command(chart['beat_data'], 'endpos'):
+            output += build_command({
+                'name': 'endpos',
+                'timestamp': last_timestamp,
+                'timestamp_ms': last_timestamp,
+                'data': {},
+            }, 0)
+
+        return output
 
 
-def generate_sq3_file_from_json(params):
+    def generate_chart(chart):
+        output = bytearray()
+
+        if not contains_command(chart['beat_data'], 'startpos'):
+            output += build_command({
+                'name': 'startpos',
+                'timestamp': 0,
+                'timestamp_ms': 0,
+                'data': {},
+            }, 0)
+
+        if not contains_command(chart['beat_data'], 'chipstart'):
+            output += build_command({
+                'name': 'chipstart',
+                'timestamp': 0,
+                'timestamp_ms': 0,
+                'data': {},
+            }, 0)
+
+        for event in sorted(chart['beat_data'], key=lambda x:x['timestamp']):
+            if event['name'] not in EVENT_ID_REVERSE:
+                print("Couldn't find %s in EVENT_ID_REVERSE" % event['name'])
+                exit(1)
+
+            if event['name'] in VALID_METACOMMANDS:
+                continue
+
+            output += build_command(event, chart['header']['game_type'])
+
+        last_measure_duration = calculate_last_measure_duration(chart['beat_data'])
+        last_event = sorted(chart['beat_data'], key=lambda x:x['timestamp'])[-1]
+        last_timestamp = last_event['timestamp'] + last_measure_duration
+
+        if not contains_command(chart['beat_data'], 'chipend'):
+            output += build_command({
+                'name': 'chipend',
+                'timestamp': last_timestamp,
+                'timestamp_ms': last_timestamp,
+                'data': {},
+            }, 0)
+
+        if not contains_command(chart['beat_data'], 'endpos'):
+            output += build_command({
+                'name': 'endpos',
+                'timestamp': last_timestamp,
+                'timestamp_ms': last_timestamp,
+                'data': {},
+            }, 0)
+
+        return output
+
+
     json_sq3 = json.loads(params['input']) if 'input' in params else None
 
     if not json_sq3:
         print("Couldn't find input data")
         return
 
-    # Generate metadata charts for each chart
     chart_metadata = [x for x in json_sq3['charts'] if x['header']['is_metadata'] == 1]
+    charts = [x for x in json_sq3['charts'] if x['header']['is_metadata'] != 1]
 
-    if len(chart_metadata) == 0:
-        print("Couldn't find metadata chart")
-        exit(1)
+    if not json_sq3['charts']:
+        return
 
-    output_folder = params['output']
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    if not chart_metadata:
+        chart_metadata = copy.deepcopy(json_sq3['charts'][0])
 
-    parts = ["drum", "guitar", "bass", "open"]
+    else:
+        chart_metadata = chart_metadata[0]
+
+    parts = ["drum", "guitar", "bass", "open", "guitar1", "guitar2"]
     found_parts = []
-    song_metadata_drum = {}
-    song_metadata_guitar = {}
-    for valid_parts in [['drum'], ['guitar', 'bass', 'open']]:
-        metadata_chart = chart_metadata[0]
+    parsed_charts = []
+    for valid_parts in [['drum'], ['guitar', 'bass', 'open', 'guitar1', 'guitar2']]:
+        metadata_chart = generate_metadata_chart(chart_metadata)
 
+        # Step 2: Generate note charts from input charts
         filtered_charts = [
-            generate_metadata_fields(metadata_chart, x) for x in json_sq3['charts']
+            x for x in json_sq3['charts']
             if x['header']['is_metadata'] == 0
             and x['header']['game_type'] < len(parts)
             and parts[x['header']['game_type']] in valid_parts
         ]
 
+        if not filtered_charts:
+            continue
+
         found_parts += [parts[x['header']['game_type']] for x in json_sq3['charts'] if x['header']['is_metadata'] == 0]
 
-        if len(filtered_charts) == 0:
-            continue
+        chart_metadata['header']['is_metadata'] = 1
+        parsed_charts.append({
+            'data': metadata_chart,
+            'header': chart_metadata['header']
+        })
 
-        charts_data = [{
-            'data': generate_sq3_chart_data_from_json(metadata_chart),
-            'metadata': metadata_chart,
-        }]
+        for chart in filtered_charts:
+            parsed_charts.append({
+                'data': generate_chart(chart),
+                'header': chart['header']
+            })
 
-        charts_data += [{
-            'data': generate_sq3_chart_data_from_json(x),
-            'metadata': x
-        } for x in filtered_charts]
+        output_data = create_final_sq3_chart(params, parsed_charts)
 
-        if 'drum' in valid_parts:
-            song_metadata_drum = generate_song_metadata(filtered_charts)
-        else:
-            song_metadata_guitar = generate_song_metadata(filtered_charts)
+        output_filename = "%s%04d.sq3" % ('d' if 'drum' in valid_parts else 'g', params['musicid'])
+        with open(os.path.join(params['output'], output_filename), "wb") as outfile:
+            outfile.write(output_data)
 
-        create_sq3_file(json_sq3, params, valid_parts, charts_data)
-        create_event_file(json_sq3, params, filtered_charts)
+        create_event_file(params, filtered_charts)
 
-    found_parts = list(set(found_parts))
 
-    if not params.get('no_sounds', False):
-        create_sound_files(json_sq3, params, found_parts)
+def read_sq3_data(data, events, other_params):
+    def parse_event_block(output, game, events={}):
+        packet_data = {}
 
-    song_metadata = song_metadata_drum if song_metadata_drum else song_metadata_guitar
+        timestamp = struct.unpack("<I", output[0x00:0x04])[0]
+        beat = struct.unpack("<I", output[0x10:0x14])[0]
+        game_type_id = {"drum": 0, "guitar": 1, "bass": 2}[game]
 
-    pre_image = song_metadata.get("pre_image", None)
+        if output[0x04] == 0x01:
+            bpm_mpm = struct.unpack("<I", output[0x34:0x38])[0]
+            packet_data['bpm'] = 60000000 / bpm_mpm
+            # print(timestamp, packet_data)
 
-    if pre_image and params.get('sound_folder', None):
-        pre_image = os.path.join(params['sound_folder'], pre_image)
-        pre_image_output = "pre" + os.path.splitext(pre_image)[-1]
-        song_metadata['pre_image'] = pre_image_output
+        elif output[0x04] == 0x02:
+            # Time signature is represented as numerator/(1<<denominator)
+            packet_data['numerator'] = output[0x34]
+            packet_data['denominator'] = 1 << output[0x35]
+            packet_data['denominator_orig'] = output[0x35]
 
-        pre_image_path = os.path.join(output_folder, pre_image_output)
-        if os.path.exists(pre_image):
-            shutil.copy(pre_image, pre_image_path)
+            # print(timestamp, packet_data)
 
-    create_package_file(json_sq3, params, song_metadata_drum, song_metadata_guitar, found_parts)
+        elif output[0x04] == 0x07:
+            packet_data['unk'] = struct.unpack("<I", output[0x14:0x18])[0]  # What is this?
 
+        elif output[0x04] == 0x10:
+            packet_data['hold_duration'] = struct.unpack("<I", output[0x08:0x0c])[0]
+            packet_data['unk'] = struct.unpack("<I", output[0x14:0x18])[0]  # What is this?
+            packet_data['sound_id'] = struct.unpack("<I", output[0x20:0x24])[0]
 
-def get_start_timestamp(chart):
-    for timestamp_key in sorted(chart['timestamp'].keys(), key=lambda x: int(x)):
-        for beat in chart['timestamp'][timestamp_key]:
-            if beat['name'] in ["startpos"]:
-                return timestamp_key
+            # Note length (relation to hold duration)
+            packet_data['note_length'] = struct.unpack("<I", output[0x24:0x28])[0]
 
-    return sorted(chart['timestamp'].keys(), key=lambda x: int(x))[0]
+            packet_data['volume'] = output[0x2d]
+            packet_data['auto_volume'] = output[0x2e]
+            packet_data['note'] = NOTE_MAPPING[game][output[0x30]]
 
+            # wail direction? 0/1 = up, 2 = down. Seems to alternate 0 and 1 if wailing in succession
+            packet_data['wail_misc'] = output[0x31]
 
-def get_end_timestamp(chart):
-    for timestamp_key in sorted(chart['timestamp'].keys(), key=lambda x: int(x)):
-        for beat in chart['timestamp'][timestamp_key]:
-            if beat['name'] in ["endpos"]:
-                return timestamp_key
+            # 2 = hold note, 1 = wail (bitmasks, so 3 = wail + hold)
+            packet_data['guitar_special'] = output[0x32]
 
-    return sorted(chart['timestamp'].keys(), key=lambda x: int(x))[-1]
+            # Auto note
+            packet_data['auto_note'] = output[0x34]
 
+            if packet_data['auto_note'] == 1:
+                packet_data['note'] = "auto"
 
-def generate_sq3_chart_data_from_json(chart):
-    metadata = True if chart['header']['is_metadata'] == 1 else False
+            if beat in events:
+                for event in events[beat]:
+                    is_gametype = event['game_type'] == game_type_id
+                    is_eventtype = event['event_type'] == 0
+                    is_note = packet_data['sound_id'] == event['note']
 
-    event_data = []
-    found_events = []
+                    # This field seems to be maybe left over from previous games?
+                    # 1852 doesn't work properly set the gamelevel fields
+                    #is_diff = (event['gamelevel'] & (1 << difficulty)) != 0
 
-    start_timestamp = int(get_start_timestamp(chart))
-    end_timestamp = int(get_end_timestamp(chart))
+                    if is_gametype and is_eventtype and is_note:
+                        packet_data['bonus_note'] = True
 
-    # Handle events based on beat offset in ascending order
-    for timestamp_key in sorted(chart['timestamp'].keys(), key=lambda x: int(x)):
-        if int(timestamp_key) < start_timestamp or int(timestamp_key) > end_timestamp:
-            continue
+        timestamp = struct.unpack("<I", output[0x00:0x04])[0]
 
-        for beat in chart['timestamp'][timestamp_key]:
-            chart_events = [
-                "chipstart",
-                "chipend",
-                "startpos",
-                "endpos",
-                "note"
-            ]
+        return {
+            "id": output[0x04],
+            "name": EVENT_ID_MAP[output[0x04]],
+            'timestamp': timestamp,
+            'timestamp_ms': timestamp / 300,
+            'beat': beat,
+            "data": packet_data
+        }
 
-            metadata_events = [
-                "bpm",
-                "barinfo",
-                "baron",
-                "baroff",
-                "measure",
-                "beat",
-                "startpos",
-                "endpos"
-            ]
-
-            if not metadata and beat['name'] not in chart_events:
-                continue
-
-            elif metadata and beat['name'] not in metadata_events:
-                continue
-
-            if beat['name'] in ["startpos", "endpos"] and EVENT_ID_REVERSE[beat['name']] in found_events:
-                # Don't duplicate these events
-                continue
-
-            found_events.append(EVENT_ID_REVERSE[beat['name']])
-
-            mdata = [0] * 0x40  # Use proper section size here
-
-            mdata[0x00:0x04] = struct.pack("<I", int(timestamp_key))
-            mdata[0x04] = EVENT_ID_REVERSE[beat['name']] & 0xff
-            mdata[0x10:0x14] = struct.pack("<I", beat['beat'])
-
-            if beat['name'] == "bpm":
-                mdata[0x34:0x38] = struct.pack("<I", int(round(60000000 / beat['data']['bpm'])))
-            elif beat['name'] == "barinfo":
-                mdata[0x34] = beat['data']['numerator'] & 0xff
-
-                denominator = 1 << (beat['data']['denominator'].bit_length() - 1)
-                if denominator != beat['data']['denominator']:
-                    raise Exception("ERROR: The time signature denominator must be divisible by 2."
-                                    "Found {}".format(beat['data']['denominator']))
-
-                mdata[0x35] = (beat['data']['denominator'].bit_length() - 1) & 0xff
-            elif beat['name'] == "chipstart":
-                if 'unk' in beat['data']:
-                    mdata[0x14:0x18] = struct.pack("<I", beat['data']['unk'])
-            elif beat['name'] == "note":
-                if beat['data']['note'] not in REVERSE_NOTE_MAPPING:
-                    # Set all unknown events to auto play
-                    REVERSE_NOTE_MAPPING[beat['data']['note']] = 0xff
-
-                if 'hold_duration' in beat['data']:
-                    mdata[0x08:0x0c] = struct.pack("<I", beat['data']['hold_duration'])
-
-                if 'unk' in beat['data']:
-                    mdata[0x14:0x18] = struct.pack("<I", beat['data']['unk'])
-                else:
-                    mdata[0x14:0x18] = struct.pack("<I", 0x16c)
-
-                if 'sound_id' in beat['data']:
-                    mdata[0x20:0x24] = struct.pack("<I", beat['data']['sound_id'])
-
-                if chart['header']['game_type'] != 0:
-                    if 'note_length' in beat['data']:
-                        mdata[0x24:0x28] = struct.pack("<I", beat['data']['note_length'])
-                    else:
-                        mdata[0x24:0x28] = struct.pack("<I", 0x40)
-
-                if 'volume' in beat['data']:
-                    mdata[0x2d] = beat['data']['volume'] & 0xff
-
-                if 'auto_volume' in beat['data']:
-                    mdata[0x2e] = beat['data']['auto_volume'] & 0xff
-
-                if 'note' in beat['data']:
-                    mdata[0x30] = REVERSE_NOTE_MAPPING[beat['data']['note']] & 0xff
-
-                if 'wail_misc' in beat['data']:
-                    mdata[0x31] = beat['data']['wail_misc'] & 0xff
-
-                if 'guitar_special' in beat['data']:
-                    mdata[0x32] = beat['data']['guitar_special'] & 0xff
-
-                if 'auto_note' in beat['data']:
-                    mdata[0x34] = beat['data']['auto_note'] & 0xff
-
-                if beat['data'].get('note') == "auto":
-                    mdata[0x34] = 1  # Auto note
-                    mdata[0x2e] = 1  # Auto volume
-
-            event_data.append(bytearray(mdata))
-
-    output_data = [0] * 0x20
-    output_data[0x00:0x04] = b'SQ3T'
-    output_data[0x06] = 0x03  # SQ3 flag
-    output_data[0x0a] = 0x03  # SQ3 flag 2?
-    output_data[0x0c:0x10] = struct.pack("<I", 0x20)  # Size of header
-    output_data[0x10:0x14] = struct.pack("<I", len(event_data))  # Number of events
-    output_data[0x14] = chart['header']['unk_sys'] & 0xff
-    output_data[0x15] = chart['header']['is_metadata'] & 0xff
-    output_data[0x16] = chart['header']['difficulty'] & 0xff
-    output_data[0x17] = chart['header']['game_type'] & 0xff
-    output_data[0x18:0x1a] = struct.pack("<H", chart['header']['time_division'])
-    output_data[0x1a:0x1c] = struct.pack("<H", chart['header']['beat_division'])
-    output_data[0x1c:0x20] = struct.pack("<I", 0x40)  # Size of each entry
-
-    if metadata:
-        output_data[0x15] = 0x01
-        output_data[0x16] = 0x01
-
-    output_data = bytearray(output_data)
-    for data in event_data:
-        output_data += data
-
-    return output_data
-
-
-########################
-#   SQ3 parsing code   #
-########################
-
-def parse_event_block(mdata, game, difficulty, events={}):
-    packet_data = {}
-
-    timestamp = struct.unpack("<I", mdata[0x00:0x04])[0]
-    beat = struct.unpack("<I", mdata[0x10:0x14])[0]
-    game_type_id = {"drum": 0, "guitar": 1, "bass": 2, "open": 3}[game]
-
-    if mdata[0x04] == 0x01:
-        bpm_mpm = struct.unpack("<I", mdata[0x34:0x38])[0]
-        packet_data['bpm'] = 60000000 / bpm_mpm
-    elif mdata[0x04] == 0x02:
-        # Time signature is represented as numerator/(1<<denominator)
-        packet_data['numerator'] = mdata[0x34]
-        packet_data['denominator'] = 1 << mdata[0x35]
-        packet_data['denominator_orig'] = mdata[0x35]
-    elif mdata[0x04] == 0x07:
-        packet_data['unk'] = struct.unpack("<I", mdata[0x14:0x18])[0]  # What is this?
-    elif mdata[0x04] == 0x10:
-        packet_data['hold_duration'] = struct.unpack("<I", mdata[0x08:0x0c])[0]
-        packet_data['unk'] = struct.unpack("<I", mdata[0x14:0x18])[0]  # What is this?
-        packet_data['sound_id'] = struct.unpack("<I", mdata[0x20:0x24])[0]
-
-        # Note length (relation to hold duration)
-        packet_data['note_length'] = struct.unpack("<I", mdata[0x24:0x28])[0]
-
-        packet_data['volume'] = mdata[0x2d]
-        packet_data['auto_volume'] = mdata[0x2e]
-        packet_data['note'] = NOTE_MAPPING[game][mdata[0x30]]
-
-        # wail direction? 0/1 = up, 2 = down. Seems to alternate 0 and 1 if wailing in succession
-        packet_data['wail_misc'] = mdata[0x31]
-
-        # 2 = hold note, 1 = wail (bitmasks, so 3 = wail + hold)
-        packet_data['guitar_special'] = mdata[0x32]
-
-        # Auto note
-        packet_data['auto_note'] = mdata[0x34]
-
-        if packet_data['auto_note'] == 1:
-            packet_data['note'] = "auto"
-
-        if beat in events:
-            for event in events[beat]:
-                is_gametype = event['game_type'] == game_type_id
-                is_eventtype = event['event_type'] == 0
-                is_note = packet_data['sound_id'] == event['note']
-
-                # This field seems to be maybe left over from previous games?
-                # 1852 doesn't work properly set the gamelevel fields
-                #is_diff = (event['gamelevel'] & (1 << difficulty)) != 0
-
-                if is_gametype and is_eventtype and is_note:
-                    packet_data['bonus_note'] = True
-
-    return {
-        "id": mdata[0x04],
-        "name": EVENT_ID_MAP[mdata[0x04]],
-        'timestamp': struct.unpack("<I", mdata[0x00:0x04])[0],
-        'beat': beat,
-        "data": packet_data
-    }
-
-
-def read_sq3_data(data, events):
     output = {
         "beat_data": []
     }
@@ -1248,7 +665,7 @@ def read_sq3_data(data, events):
         return None
 
     magic = data[0:4]
-    if magic != bytearray("SQ3T", encoding="ascii"):
+    if magic != b"SQ3T":
         print("Not a valid SQ3 file")
         exit(-1)
 
@@ -1273,230 +690,39 @@ def read_sq3_data(data, events):
     for i in range(entry_count):
         mdata = data[header_size + (i * entry_size):header_size + (i * entry_size) + entry_size]
         part = ["drum", "guitar", "bass"][game_type]
-        parsed_data = parse_event_block(mdata, part, difficulty, events)
+        parsed_data = parse_event_block(mdata, part, events)
         output['beat_data'].append(parsed_data)
 
     return output
 
 
-def convert_to_timestamp_chart(chart):
-    chart['timestamp'] = {}
-
-    for x in chart['beat_data']:
-        if x['timestamp'] not in chart['timestamp']:
-            chart['timestamp'][x['timestamp']] = []
-
-        beat = x['timestamp']
-        del x['timestamp']
-
-        chart['timestamp'][beat].append(x)
-
-    del chart['beat_data']
-
-    return chart
-
-
-def parse_chart_intermediate(chart, events):
-    chart_raw = read_sq3_data(chart, events)
-
-    if not chart_raw:
-        return None
-
-    chart_raw = convert_to_timestamp_chart(chart_raw)
-
-    start_timestamp = int(get_start_timestamp(chart_raw))
-    end_timestamp = int(get_end_timestamp(chart_raw))
-
-    # Handle events based on beat offset in ascending order
-    for timestamp_key in sorted(chart_raw['timestamp'].keys(), key=lambda x: int(x)):
-        if int(timestamp_key) < start_timestamp or int(timestamp_key) > end_timestamp:
-            del chart_raw['timestamp'][timestamp_key]
-
-    return chart_raw
-
-
-def add_song_info(charts, music_id, music_db):
-    song_info = None
-
-    if music_db and music_db.endswith(".csv") or not music_db:
-        song_info = mdb.get_song_info_from_csv(music_db if music_db else "gitadora_music.csv", music_id)
-
-    if song_info is None or music_db and music_db.endswith(".xml") or not music_db:
-        song_info = mdb.get_song_info_from_mdb(music_db if music_db else "mdb_xg.xml", music_id)
-
-    for chart_idx in range(len(charts)):
-        chart = charts[chart_idx]
-
-        if not song_info:
-            continue
-
-        game_type = ["drum", "guitar", "bass"][chart['header']['game_type']]
-
-        if 'title' in song_info:
-            charts[chart_idx]['header']['title'] = song_info['title']
-
-        if 'artist' in song_info:
-            charts[chart_idx]['header']['artist'] = song_info['artist']
-
-        if 'difficulty' in song_info:
-            diff_idx = (chart['header']['game_type'] * 5) + chart['header']['difficulty']
-            charts[chart_idx]['header']['level'] = {
-                game_type: int(song_info['difficulty'][diff_idx])
-            }
-
-        if 'bpm' in song_info:
-            charts[chart_idx]['header']['bpm'] = song_info['bpm']
-
-        if 'bpm2' in song_info:
-            charts[chart_idx]['header']['bpm2'] = song_info['bpm2']
-        
-        #New: Add movie_filename
-        if 'movie_filename' in song_info:
-            charts[chart_idx]['header']['movie_filename'] = song_info['movie_filename']
-
-    return charts
-
-
-def filter_charts(charts, params):
-    filtered_charts = []
-
-    for chart in charts:
-        if chart['header']['is_metadata'] != 0:
-            continue
-
-        part = ["drum", "guitar", "bass"][chart['header']['game_type']]
-        has_all = 'all' in params['parts']
-        has_part = part in params['parts']
-        if not has_all and not has_part:
-            filtered_charts.append(chart)
-            continue
-
-        diff = ['nov', 'bsc', 'adv', 'ext', 'mst'][chart['header']['difficulty']]
-        has_min = 'min' in params['difficulty']
-        has_max = 'max' in params['difficulty']
-        has_all = 'all' in params['difficulty']
-        has_diff = diff in params['difficulty']
-
-        if not has_min and not has_max and not has_all and not has_diff:
-            filtered_charts.append(chart)
-            continue
-
-    for chart in filtered_charts:
-        charts.remove(chart)
-
-    return charts
-
-
-def split_charts_by_parts(charts):
-    guitar_charts = []
-    bass_charts = []
-
-    for chart in charts:
-        if chart['header']['is_metadata'] != 0:
-            continue
-
-        game_type = ["drum", "guitar", "bass"][chart['header']['game_type']]
-        if game_type == "guitar":
-            guitar_charts.append(chart)
-        elif game_type == "bass":
-            bass_charts.append(chart)
-
-    # Remove charts from chart list
-    for chart in guitar_charts:
-        charts.remove(chart)
-
-    for chart in bass_charts:
-        charts.remove(chart)
-
-    return charts, guitar_charts, bass_charts
-
-
-def combine_guitar_charts(guitar_charts, bass_charts):
-    # Combine guitar and bass charts
-    parsed_bass_charts = []
-
-    for chart in guitar_charts:
-        # Find equivalent chart
-        for chart2 in bass_charts:
-            if chart['header']['difficulty'] != chart2['header']['difficulty']:
-                continue
-
-            if 'level' in chart2['header']:
-                if 'level' not in chart['header']:
-                    chart['header']['level'] = {}
-
-                for k in chart2['header']['level']:
-                    chart['header']['level'][k] = chart2['header']['level'][k]
-
-            # Add all bass notes to guitar chart data
-            for timestamp_key in chart2['timestamp']:
-                for event in chart2['timestamp'][timestamp_key]:
-                    if event['name'] != "note":
-                        continue
-
-                    if timestamp_key not in chart['timestamp']:
-                        chart['timestamp'][timestamp_key] = []
-
-                    chart['timestamp'][timestamp_key].append(event)
-
-            parsed_bass_charts.append(chart2)
-
-    for chart in parsed_bass_charts:
-        bass_charts.remove(chart)
-
-    return guitar_charts, bass_charts
-
-
 def generate_json_from_sq3(params):
-    combine_guitars = params['merge_guitars'] if 'merge_guitars' in params else False
     data = open(params['input'], "rb").read() if 'input' in params else None
-    events = params['events'] if 'events' in params else {}
 
     if not data:
         print("No input file data")
         return
 
-    output_data = {}
-
     magic = data[0:4]
-    if magic != bytearray("SEQP", encoding="ascii"):
+    if magic != b"SEQP":
         print("Not a valid SEQ3 file")
         exit(-1)
 
     data_offset, musicid, num_charts = struct.unpack("<III", data[0x10:0x1c])
 
+    if not params.get('musicid', None):
+        params['musicid'] = musicid
+
     raw_charts = []
     for i in range(num_charts):
         data_size = struct.unpack("<I", data[data_offset:data_offset+4])[0]
         chart_data = data[data_offset+0x10:data_offset+0x10+data_size]
-        raw_charts.append(chart_data)
+        raw_charts.append((chart_data, None, None, None))
         data_offset += data_size
 
+    output_data = generate_json_from_data(params, read_sq3_data, raw_charts)
     output_data['musicid'] = musicid
     output_data['format'] = Sq3Format.get_format_name()
-
-    charts = []
-    for chart in raw_charts:
-        parsed_chart = parse_chart_intermediate(chart, events)
-
-        if not parsed_chart:
-            continue
-
-        charts.append(parsed_chart)
-        charts[-1]['header']['musicid'] = musicid
-
-    charts = add_song_info(charts, musicid, params['musicdb'])
-    charts = filter_charts(charts, params)
-    charts, guitar_charts, bass_charts = split_charts_by_parts(charts)
-
-    if combine_guitars:
-        guitar_charts, bass_charts = combine_guitar_charts(guitar_charts, bass_charts)
-
-    # Merge all charts back together after filtering, merging guitars etc
-    charts += guitar_charts
-    charts += bass_charts
-
-    output_data['charts'] = charts
 
     return json.dumps(output_data, indent=4, sort_keys=True)
 
@@ -1512,7 +738,7 @@ class Sq3Format:
 
     @staticmethod
     def to_chart(params):
-        generate_sq3_file_from_json(params)
+        generate_sq3_from_json(params)
 
     @staticmethod
     def is_format(filename):

@@ -1,6 +1,16 @@
-import imageio_ffmpeg
+import platform
 import os
 import shutil
+
+import imageio_ffmpeg
+
+def is_wsl():
+    return "microsoft" in platform.uname()[3].lower()
+
+
+def get_windows_path(input):
+    return '\\'.join(os.path.normpath(input).split(os.sep))
+
 
 def getCaseInsensitivePath(path):
     """

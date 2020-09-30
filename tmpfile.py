@@ -16,8 +16,14 @@ def add_temp_folder(filename):
     temp_foldernames.append(filename)
 
 def mkstemp(suffix=""):
-    fid, filename = tempfile.mkstemp(suffix=suffix)
+    os.makedirs("temp", exist_ok=True)
+
+    fid, filename = tempfile.mkstemp(suffix=suffix, dir="temp")
     os.fdopen(fid, "w").close() # Fix bug with Windows
+
+    # Get relative path
+    if filename.startswith(os.path.abspath(".")):
+        filename = filename[len(os.path.abspath("."))+1:]
 
     #print("Made temp file", filename)
     temp_filenames.append(filename)
@@ -25,7 +31,14 @@ def mkstemp(suffix=""):
     return filename
 
 def mkdtemp(prefix=None):
-    foldername = tempfile.mkdtemp(prefix=prefix)
+    os.makedirs("temp", exist_ok=True)
+
+    foldername = tempfile.mkdtemp(prefix=prefix, dir="temp")
+
+    # Get relative path
+    if foldername.startswith(os.path.abspath(".")):
+        foldername = foldername[len(os.path.abspath("."))+1:]
+
     #print("Made temp folder", foldername)
     temp_foldernames.append(foldername)
     return foldername
