@@ -1,3 +1,3 @@
-lxml==4.1.1
+lxml==4.9.1
 ifstools==1.4
 Pillow==5.1.0
