@@ -1,11 +1,13 @@
-setuptools==39.1.0
+ifstools==1.15
+imageio-ffmpeg==0.6.0
+kbinxml==1.6
+lxml==6.0.2
+numpy==1.26.4
+Pillow==11.3.0
+pydub==0.24.1
+tqdm==4.56.2
 six==1.11.0
 semidbm==0.5.1
-numpy
-lxml
-git+https://github.com/miurahr/pykakasi
-ifstools
-imageio_ffmpeg==0.4.2
-kbinxml
-pydub==0.24.0
-Pillow
+pykakasi==2.2.0
+setuptools==82.0.1
+audioop-lts==0.2.2; python_version >= "3.13"

@@ -28,8 +28,12 @@ def find_handler(input_filename, input_format):
         if not handler:
             continue
 
-        if input_format is not None and handler.get_format_name().lower() == input_format.lower():
-            return handler
+        if input_format is not None:
+            # An explicit format was given: match by name only. Don't fall back
+            # to is_format() sniffing, which opens the path and fails when the
+            # input is a folder (e.g. JSON input) on every non-matching handler.
+            if handler.get_format_name().lower() == input_format.lower():
+                return handler
         elif input_filename is not None and handler.is_format(input_filename):
             return handler
 

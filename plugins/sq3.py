@@ -284,6 +284,11 @@ def generate_sq3_from_json(params):
         output[0x00:0x04] = struct.pack("<I", event['timestamp'])
         output[0x04] = EVENT_ID_REVERSE[event['name']] & 0xff
 
+        # Preserve the beat position (read back from 0x10) so JSON->SQ3 keeps
+        # the original tick value instead of resetting every event to beat 0.
+        if 'beat' in event:
+            output[0x10:0x14] = struct.pack("<I", event['beat'] & 0xffffffff)
+
         if event['name'] == "bpm":
             if event['data']['bpm'] < 1:
                 event['data']['bpm'] = 1
@@ -354,7 +359,11 @@ def generate_sq3_from_json(params):
 
             if event['data'].get('note') == "auto":
                 output[0x34] = 1  # Auto note
-                output[0x2e] = 1  # Auto volume
+
+                # Only default auto_volume on when the source didn't specify it
+                # (e.g. DTX input); an explicit value was already written above.
+                if 'auto_volume' not in event['data']:
+                    output[0x2e] = 1  # Auto volume
 
         return output
 
@@ -499,7 +508,10 @@ def generate_sq3_from_json(params):
                 print("Couldn't find %s in EVENT_ID_REVERSE" % event['name'])
                 exit(1)
 
-            if event['name'] in VALID_METACOMMANDS:
+            # Note charts carry their own startpos/endpos boundary markers, so
+            # keep those even though they are metacommands; skip the rest, which
+            # belong only to the metadata chart.
+            if event['name'] in VALID_METACOMMANDS and event['name'] not in ('startpos', 'endpos'):
                 continue
 
             output += build_command(event, chart['header']['game_type'])
@@ -532,6 +544,10 @@ def generate_sq3_from_json(params):
     if not json_sq3:
         print("Couldn't find input data")
         return
+
+    # Take the music ID from the JSON when one wasn't forced via --music-id
+    if not params.get('musicid', None):
+        params['musicid'] = json_sq3.get('musicid', 0)
 
     chart_metadata = [x for x in json_sq3['charts'] if x['header']['is_metadata'] == 1]
     charts = [x for x in json_sq3['charts'] if x['header']['is_metadata'] != 1]
